@@ -81,4 +81,29 @@ class ApkTest(unittest.TestCase):
         with self.assertRaises(ValueError): self.check_apk("package: name='org.fossify.voicerecorder' versionCode='21' versionName='1.7.4'")
         with self.assertRaises(ValueError): self.check_apk("package: name='us.josemancharo.voicerecorderqoa' versionCode='1001' versionName='2.0.1'", '0' * 64)
 
+class CertificateParsingTest(unittest.TestCase):
+    PEM = '-----BEGIN CERTIFICATE-----\nYWJj\n-----END CERTIFICATE-----'
+    SHA = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+
+    def test_jvm_stdout_warning_is_not_certificate_data(self):
+        warning = '[0.001s][warning][perf,memops] Cannot use file /tmp/hsperfdata_agent/6 because it is locked by another process\n'
+        self.assertEqual(self.SHA, release.certificate_digest(warning + self.PEM))
+
+    def test_crlf_and_whitespace(self):
+        self.assertEqual(self.SHA, release.certificate_digest(self.PEM.replace('\n', '\r\n')))
+        self.assertEqual(self.SHA, release.certificate_digest(self.PEM.replace('YWJj', ' YW Jj ')))
+
+    def test_multiple_missing_or_invalid_certificates_rejected(self):
+        for output in [self.PEM + self.PEM, 'YWJj', self.PEM.replace('YWJj', '@@@@'), self.PEM.replace('YWJj', 'YWJ')]:
+            with self.assertRaises(ValueError): release.certificate_digest(output)
+
+    def test_uppercase_and_colons_are_normalized(self):
+        colon = ':'.join(self.SHA[i:i+2].upper() for i in range(0, 64, 2))
+        self.assertEqual(self.SHA, release.signer_digest('Signer #1 certificate SHA-256 digest: ' + colon))
+
+    def test_missing_truncated_or_multiple_signer_rejected(self):
+        for output in ['', 'Signer #1 certificate SHA-256 digest: abc', 'Signer #2 certificate SHA-256 digest: ' + self.SHA,
+                       'Signer #1 certificate SHA-256 digest: ' + self.SHA + '\nSigner #2 certificate SHA-256 digest: ' + self.SHA]:
+            with self.assertRaises(ValueError): release.signer_digest(output)
+
 if __name__ == '__main__': unittest.main()
