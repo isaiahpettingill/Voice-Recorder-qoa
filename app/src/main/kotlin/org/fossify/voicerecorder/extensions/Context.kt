@@ -26,6 +26,7 @@ import org.fossify.commons.extensions.internalStoragePath
 import org.fossify.commons.extensions.isAudioFast
 import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.helpers.isRPlus
+import org.fossify.voicerecorder.audio.AudioFiles
 import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.helpers.Config
 import org.fossify.voicerecorder.helpers.DEFAULT_RECORDINGS_FOLDER
@@ -101,7 +102,7 @@ fun Context.hasRecordings(): Boolean {
     } else {
         File(recordingsFolder)
             .listFiles()
-            ?.any { it.isAudioFast() }
+            ?.any { (it.isAudioFast() || it.extension.equals("qoa", true)) }
             ?: false
     }
 }
@@ -168,12 +169,12 @@ private fun Context.getLegacyRecordings(trashed: Boolean = false): ArrayList<Rec
     }
     val files = File(folder).listFiles() ?: return recordings
 
-    files.filter { it.isAudioFast() }.forEach {
+    files.filter { (it.isAudioFast() || it.extension.equals("qoa", true)) }.forEach {
         val id = it.hashCode()
         val title = it.name
         val path = it.absolutePath
         val timestamp = it.lastModified()
-        val duration = getDuration(it.absolutePath) ?: 0
+        val duration = if (it.extension.equals("qoa", true)) runCatching { AudioFiles.qoaDuration(this, it.absolutePath) }.getOrDefault(0) else getDuration(it.absolutePath) ?: 0
         val size = it.length().toInt()
         recordings.add(
             Recording(
@@ -194,7 +195,7 @@ private fun Context.readRecordingFromFile(file: DocumentFile): Recording {
     val title = file.name!!
     val path = file.uri.toString()
     val timestamp = file.lastModified()
-    val duration = getDurationFromUri(file.uri)
+    val duration = if (file.name?.endsWith(".qoa", true) == true) runCatching { AudioFiles.qoaDuration(this, file.uri.toString()).toLong() }.getOrDefault(0L) else getDurationFromUri(file.uri)
     val size = file.length().toInt()
     return Recording(
         id = id,
@@ -231,7 +232,7 @@ fun Context.createDocumentFile(path: String): Uri? {
         DocumentsContract.createDocument(
             contentResolver,
             parentUri,
-            path.getMimeType(),
+            if (path.endsWith(".qoa", true)) "audio/x-qoa" else path.getMimeType(),
             path.getFilenameFromPath()
         )
     } catch (@Suppress("SwallowedException") e: IllegalStateException) {

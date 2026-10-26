@@ -11,5 +11,6 @@ on:
 
 jobs:
   call-release-pr:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/prepare-release-pr.yml@main
     secrets: inherit

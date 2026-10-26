@@ -28,6 +28,9 @@ import org.fossify.commons.extensions.updateTextColors
 import org.fossify.commons.extensions.value
 import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.helpers.isTiramisuPlus
+import org.fossify.voicerecorder.audio.AudioFiles
+import java.io.File
+import java.util.concurrent.Executors
 import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.activities.SimpleActivity
 import org.fossify.voicerecorder.adapters.RecordingsAdapter
@@ -54,6 +57,11 @@ class PlayerFragment(
     }
 
     private var player: MediaPlayer? = null
+    private val decoder = Executors.newSingleThreadExecutor()
+    private var decodeTask: java.util.concurrent.Future<*>? = null
+    private var playbackFile: File? = null
+    private var playbackGeneration = 0
+    private var prepared = false
     private var progressTimer = Timer()
     private var playedRecordingIDs = Stack<Int>()
     private var itemsIgnoringSearch = ArrayList<Recording>()
@@ -85,7 +93,10 @@ class PlayerFragment(
 
     override fun onDestroy() {
         unregisterNoisyAudioReceiver()
-        player?.stop()
+        playbackGeneration++
+        decodeTask?.cancel(true)
+        decoder.shutdownNow()
+        playbackFile?.delete()
         player?.release()
         player = null
 
@@ -194,7 +205,10 @@ class PlayerFragment(
 
             binding.recordingsPlaceholder.text = context.getString(stringId)
             resetProgress(null)
-            player?.stop()
+            prepared = false
+            playbackGeneration++
+            decodeTask?.cancel(true)
+            player?.reset()
         }
 
         val adapter = getRecordingsAdapter()
@@ -235,6 +249,7 @@ class PlayerFragment(
             }
 
             setOnPreparedListener {
+                prepared = true
                 if (playOnPreparation) {
                     resumePlayback()
                 }
@@ -249,21 +264,31 @@ class PlayerFragment(
         (binding.recordingsList.adapter as RecordingsAdapter).updateCurrentRecording(recording.id)
         playOnPreparation = playOnPrepared
 
-        player!!.apply {
-            reset()
-
+        val generation = ++playbackGeneration
+        prepared = false
+        decodeTask?.cancel(true)
+        player?.reset()
+        playbackFile?.delete()
+        playbackFile = null
+        decodeTask = decoder.submit {
+            var decoded: File? = null
             try {
-                setDataSource(context, recording.path.toUri())
-            } catch (e: Exception) {
-                context?.showErrorToast(e)
-                return
-            }
-
-            try {
-                prepareAsync()
-            } catch (e: Exception) {
-                context.showErrorToast(e)
-                return
+                if (AudioFiles.isQoa(context, recording.path)) decoded = AudioFiles.playbackFile(context, recording.path)
+                val readyFile = decoded
+                Handler(Looper.getMainLooper()).post {
+                    if (generation != playbackGeneration || player == null) { readyFile?.delete(); return@post }
+                    try {
+                        playbackFile = readyFile
+                        if (readyFile != null) player!!.setDataSource(readyFile.absolutePath)
+                        else player!!.setDataSource(context, recording.path.toUri())
+                        player!!.prepareAsync()
+                    } catch (error: Exception) { context.showErrorToast(error) }
+                }
+            } catch (error: Exception) {
+                decoded?.delete()
+                Handler(Looper.getMainLooper()).post {
+                    if (generation == playbackGeneration && error !is InterruptedException) context.showErrorToast(error)
+                }
             }
         }
 
@@ -271,7 +296,7 @@ class PlayerFragment(
         binding.playerProgressbar.setOnSeekBarChangeListener(object :
             SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser && !playedRecordingIDs.isEmpty()) {
+                if (fromUser && prepared && !playedRecordingIDs.isEmpty()) {
                     player?.seekTo(progress * 1000)
                     binding.playerProgressCurrent.text = progress.getFormattedDuration()
                     resumePlayback()
@@ -294,7 +319,7 @@ class PlayerFragment(
     private fun getProgressUpdateTask() = object : TimerTask() {
         override fun run() {
             Handler(Looper.getMainLooper()).post {
-                if (player != null) {
+                if (player != null && prepared) {
                     val progress = Math.round(player!!.currentPosition / 1000.toDouble()).toInt()
                     updateCurrentProgress(progress)
                     binding.playerProgressbar.progress = progress
@@ -324,6 +349,7 @@ class PlayerFragment(
     }
 
     private fun togglePlayPause() {
+        if (!prepared) { playOnPreparation = !playOnPreparation; return }
         if (getIsPlaying()) {
             pausePlayback()
         } else {
@@ -339,6 +365,7 @@ class PlayerFragment(
     }
 
     private fun resumePlayback() {
+        if (!prepared) return
         registerNoisyAudioReceiver()
         player?.start()
         binding.playPauseBtn.setImageDrawable(getToggleButtonIcon(true))
@@ -359,6 +386,7 @@ class PlayerFragment(
     }
 
     private fun skip(forward: Boolean) {
+        if (!prepared) return
         if (playedRecordingIDs.empty()) {
             return
         }
@@ -410,6 +438,13 @@ class PlayerFragment(
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun recordingMovedToRecycleBin(@Suppress("UNUSED_PARAMETER") event: Events.RecordingTrashUpdated) {
         refreshRecordings()
+    }
+
+    @Suppress("unused")
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun stopForEditing(@Suppress("UNUSED_PARAMETER") event: Events.StopPlayback) {
+        playOnPreparation = false
+        if (prepared && getIsPlaying()) pausePlayback()
     }
 
     private fun registerNoisyAudioReceiver() {

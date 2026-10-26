@@ -1,0 +1,7 @@
+<resources>
+    <string name="qoa_app_name" translatable="false">Voice Recorder QOA</string>
+    <string name="qoa" translatable="false">qoa</string>
+    <string name="edit_sound">Edit sound</string>
+    <string name="import_sound">Import / edit sound</string>
+    <string name="recovered_recordings">Recovered recordings</string>
+</resources>

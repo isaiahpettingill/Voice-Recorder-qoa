@@ -9,5 +9,6 @@ on:
 
 jobs:
   update-lint-baselines:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/update-lint-baselines.yml@main
     secrets: inherit

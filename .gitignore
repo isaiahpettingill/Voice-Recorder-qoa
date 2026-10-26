@@ -11,3 +11,14 @@ keystore.properties
 fastlane/fastlane.json
 fastlane/report.xml
 .kotlin/
+
+*.p12
+*.jks
+*.keystore
+/signing/
+/release-assets/
+
+__pycache__/
+*.pyc
+
+/buildSrc/build/

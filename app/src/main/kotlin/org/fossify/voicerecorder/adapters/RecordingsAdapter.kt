@@ -1,6 +1,8 @@
 package org.fossify.voicerecorder.adapters
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import org.fossify.voicerecorder.activities.EditSoundActivity
 import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
@@ -49,6 +51,7 @@ class RecordingsAdapter(
 
     override fun prepareActionMode(menu: Menu) {
         menu.apply {
+            findItem(R.id.cab_edit_sound).isVisible = isOneItemSelected()
             findItem(R.id.cab_rename).isVisible = isOneItemSelected()
             findItem(R.id.cab_open_with).isVisible = isOneItemSelected()
         }
@@ -60,6 +63,11 @@ class RecordingsAdapter(
         }
 
         when (id) {
+            R.id.cab_edit_sound -> {
+                val recording = getItemWithKey(selectedKeys.first()) ?: return
+                activity.startActivity(Intent(activity, EditSoundActivity::class.java).putExtra("path", recording.path).putExtra("title", recording.title))
+                finishActMode()
+            }
             R.id.cab_rename -> renameRecording()
             R.id.cab_share -> shareRecordings()
             R.id.cab_delete -> askConfirmDelete()
@@ -235,8 +243,8 @@ class RecordingsAdapter(
     fun updateCurrentRecording(newId: Int) {
         val oldId = currRecordingId
         currRecordingId = newId
-        notifyItemChanged(recordings.indexOfFirst { it.id == oldId })
-        notifyItemChanged(recordings.indexOfFirst { it.id == newId })
+        recordings.indexOfFirst { it.id == oldId }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+        recordings.indexOfFirst { it.id == newId }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
     }
 
     private fun getSelectedItems(): ArrayList<Recording> {
