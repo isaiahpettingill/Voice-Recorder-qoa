@@ -1,6 +1,9 @@
 package org.fossify.voicerecorder
 
 import android.net.Uri
+import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.documentfile.provider.DocumentFile
 import android.provider.DocumentsContract
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,11 +33,49 @@ class SharedStorageWorkflowTest {
     private fun fixture() = QoaCodec.encode(PcmAudio(ShortArray(1600) { (it % 100 * 200).toShort() }, 16000, 1))
     private fun withFolder(block: () -> Unit) {
         val old = context.config.saveRecordingsFolder
+        // A provider owned by this app is not the same as a DocumentsUI selection:
+        // DocumentFile permission probes require an explicit URI grant as well.
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        context.grantUriPermission(context.packageName, tree, flags or
+            Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        context.contentResolver.takePersistableUriPermission(tree, flags)
         context.config.saveRecordingsFolder = tree.toString()
-        try { block() } finally {
+        try {
+            val root = requireNotNull(DocumentFile.fromTreeUri(context, tree))
+            assertEquals("Fixture read URI permission", PackageManager.PERMISSION_GRANTED,
+                context.checkCallingOrSelfUriPermission(root.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            assertEquals("Fixture write URI permission", PackageManager.PERMISSION_GRANTED,
+                context.checkCallingOrSelfUriPermission(root.uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+            assertTrue("Fixture exposes a directory: ${root.uri}", root.isDirectory)
+            assertTrue("Fixture directory is readable", root.canRead())
+            assertTrue("Fixture directory is writable", root.canWrite())
+            block()
+        } finally {
             context.recordingsDirectory()?.listFiles()?.forEach { it.delete() }
             context.config.saveRecordingsFolder = old
+            context.contentResolver.releasePersistableUriPermission(tree, flags)
+            context.revokeUriPermission(tree, flags)
         }
+    }
+
+    @Test fun revokedTreeGrantFailsSafelyAndReselectionRestoresAccess() = withFolder {
+        val uri = requireNotNull(context.createRecordingDocument("retained.qoa"))
+        val bytes = fixture()
+        context.contentResolver.openOutputStream(uri, "w")!!.use { it.write(bytes) }
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        context.contentResolver.releasePersistableUriPermission(tree, flags)
+        context.revokeUriPermission(tree, flags)
+        try {
+            assertNull(context.recordingsDirectory())
+            assertNull(context.createRecordingDocument("blocked.qoa"))
+            assertTrue(context.getAllRecordings().isEmpty())
+        } finally {
+            context.grantUriPermission(context.packageName, tree, flags or
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            context.contentResolver.takePersistableUriPermission(tree, flags)
+        }
+        assertEquals("retained.qoa", context.getAllRecordings().single().title)
+        assertArrayEquals(bytes, context.contentResolver.openInputStream(uri)!!.use { it.readBytes() })
     }
 
     @Test fun opaqueGenericMimeQoaCreateListReopenAndRename() = withFolder {
