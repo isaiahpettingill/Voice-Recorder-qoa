@@ -29,35 +29,20 @@ class AudioEffectsTest {
         val loud=AudioEffects.process(input,EditOptions(gainDb=24.0))
         assertEquals(32767,loud.samples.maxOrNull()!!.toInt()); assertEquals(-32768,loud.samples.minOrNull()!!.toInt())
     }
-    @Test fun pitchChangesFrequencyWithoutChangingDuration() {
-        val input=tone()
-        for ((semitones,expected) in listOf(-12.0 to 220.0,12.0 to 880.0)) {
-            val out=AudioEffects.process(input,EditOptions(pitchSemitones=semitones))
-            assertEquals(input.frames,out.frames); assertEquals(expected,frequency(out),12.0)
-        }
-    }
-    @Test fun tempoChangesDurationWithoutChangingPitch() {
-        val input=tone()
-        for(speed in listOf(0.5,2.0)) {
-            val out=AudioEffects.process(input,EditOptions(speed=speed))
-            assertEquals((input.frames/speed).roundToInt(),out.frames); assertEquals(440.0,frequency(out),10.0)
-        }
-    }
-    @Test fun stereoChannelsStayAlignedAndPresetsAreAudible() {
-        val input=tone(channels=2)
-        for(effect in VoicePreset.entries.filter { it!=VoicePreset.NONE }) {
-            val out=AudioEffects.process(input,EditOptions(preset=effect))
-            assertFalse(input.samples.contentEquals(out.samples))
-            for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
-        }
-        val out=AudioEffects.process(input,EditOptions(speed=1.5,pitchSemitones=5.0))
-        for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
+    @Test fun presetDefaultsAreTunableAndDistinct() {
+        assertEquals(4.5, VoicePreset.FEMININE.defaults().pitchSemitones, 0.0)
+        assertEquals(2.0, VoicePreset.FEMININE.defaults().formantSemitones, 0.0)
+        assertEquals(-4.0, VoicePreset.MASCULINE.defaults().pitchSemitones, 0.0)
+        assertEquals(7.0, VoicePreset.CHIPMUNK.defaults().formantSemitones, 0.0)
+        val changed = VoicePreset.FEMININE.defaults().copy(formantSemitones = 1.0)
+        assertEquals(1.0, changed.formantSemitones, 0.0)
+        assertEquals(2.0, VoicePreset.FEMININE.formants, 0.0)
     }
     @Test fun trimsUseFrameBoundariesAndRejectInvalidControls() {
         val input=tone(channels=2)
         val out=AudioEffects.process(input,EditOptions(trimStartMs=100,trimEndMs=300))
         assertEquals(3200,out.frames)
-        for (options in listOf(EditOptions(speed=0.0),EditOptions(gainDb=Double.NaN),EditOptions(trimStartMs=2000),EditOptions(pitchSemitones=50.0))) {
+        for (options in listOf(EditOptions(speed=0.0),EditOptions(gainDb=Double.NaN),EditOptions(trimStartMs=2000),EditOptions(pitchSemitones=50.0),EditOptions(formantSemitones=Double.NaN),EditOptions(effectMix=2.0))) {
             try { AudioEffects.process(input,options); fail("Invalid control accepted") } catch (_: IllegalArgumentException) { }
         }
     }

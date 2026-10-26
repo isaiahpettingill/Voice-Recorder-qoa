@@ -12,7 +12,7 @@ An offline fork of [Fossify Voice Recorder](https://github.com/FossifyOrg/Voice-
 
 QOA is selected by default. Recordings can be played directly in the app; import uses Android-supported audio formats and does not require FFmpeg. To edit a recording, choose Edit sound. Preview effects, reset/cancel, then **Save QOA copy** or **Export WAV**; the source recording is never overwritten.
 
-Controls include trim, volume, peak normalization, independent pitch and tempo, robot/radio effects and an 80s chorus-plus-slapback preset. Normalization is peak normalization, not LUFS loudness matching. Pitch and tempo use basic WSOLA processing, not studio-quality mastering.
+Controls include trim, volume, peak normalization, independent pitch, formants and tempo. Tunable Feminine, Masculine, Chipmunk and Deep voice presets use **Rubber Band 4.0.0**; modulation, radio and 80s chorus/slapback use pinned **Klarinet DSP**. These replace the earlier custom voice algorithms. Choose a preset, adjust its controls, preview, and save a separate copy. Normalization is peak normalization, not LUFS loudness matching. See [preset provenance, tuning and limits](docs/VOICE_PRESETS.md).
 
 Editing currently accepts up to 8 million individual channel samples: about 167 seconds of 48 kHz mono or 83 seconds of stereo. Output is capped at 16 million channel samples. Recording and playback stream instead and do not share this short-clip editing limit; available disk space and the WAV 4 GB format limit still apply.
 
@@ -20,7 +20,7 @@ If saving fails after a recording is finalized, the recovery menu can export the
 
 ## Build and releases
 
-Use JDK 17 and Android SDK 36, then `./gradlew testFossDebugUnitTest lintFossDebug assembleFossDebug`. Debug builds have the `.debug` suffix. Release builds use the FOSS flavor.
+Use JDK 17, Android SDK 36, NDK 28.2.13676358 and CMake 3.22.1, then `./gradlew testFossDebugUnitTest lintFossDebug assembleFossDebug`. Debug builds have the `.debug` suffix. Release builds use the FOSS flavor.
 
 Pull requests run tests/lint, debug and unsigned minified-release builds, and Android emulator checks without signing secrets. Pushes to this fork’s `main` branch (including merges), and manual runs on `main`, publish only after validation succeeds. Release versions are `2.0.<workflow run number>` and version codes are `1000 + run number`; retries retain the same version. Do not reset this workflow’s run sequence or switch to a lower code after publishing. The release verifies package ID, version, signing certificate, absence of debug/internet flags and uploaded checksums before publishing a draft. Existing mismatching assets or tags are refused, never overwritten.
 
