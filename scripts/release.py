@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 APP_ID = 'us.josemancharo.voicerecorderqoa'
+BUILD_TOOLS_VERSION = '36.0.0'
 
 def plan(number):
     number = int(number)
@@ -30,9 +31,34 @@ def digest(path):
             h.update(block)
     return h.hexdigest()
 
+def certificate_digest(output):
+    # JVM launch warnings can be printed to stdout before keytool's PEM. Hash
+    # only the one certificate block, never arbitrary banner/warning text.
+    import base64
+    blocks = re.findall(r'-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=\s]+)-----END CERTIFICATE-----', output)
+    if len(blocks) != 1 or output.count('-----BEGIN CERTIFICATE-----') != 1:
+        raise ValueError('Expected exactly one exported public certificate')
+    der = base64.b64decode(re.sub(r'\s+', '', blocks[0]), validate=True)
+    if not der:
+        raise ValueError('Exported public certificate is empty')
+    return hashlib.sha256(der).hexdigest()
+
+
+def signer_digest(output):
+    matches = re.findall(r'^Signer #([0-9]+) certificate SHA-256 digest:\s*([0-9a-fA-F:]+)\s*$', output, re.MULTILINE)
+    if len(matches) != 1 or matches[0][0] != '1':
+        raise ValueError('Expected exactly one APK signer certificate SHA-256 digest')
+    value = matches[0][1].replace(':', '').lower()
+    if not re.fullmatch(r'[0-9a-f]{64}', value):
+        raise ValueError('Malformed APK signer certificate SHA-256 digest')
+    return value
+
+
 def verify(apk, code, version):
-    roots = sorted((Path(os.environ['ANDROID_HOME']) / 'build-tools').iterdir(), key=lambda p: tuple(int(x) for x in re.findall(r'\d+', p.name)))
-    root = roots[-1]
+    # Match the explicitly installed workflow tools, not a runner-image preview.
+    root = Path(os.environ['ANDROID_HOME']) / 'build-tools' / BUILD_TOOLS_VERSION
+    if not root.is_dir():
+        raise ValueError(f'Required Android build-tools {BUILD_TOOLS_VERSION} not installed')
     signature = run(str(root / 'apksigner'), 'verify', '--verbose', '--print-certs', apk)
     badging = run(str(root / 'aapt'), 'dump', 'badging', apk)
     package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging)
@@ -41,12 +67,12 @@ def verify(apk, code, version):
     if 'application-debuggable' in badging or "android.permission.INTERNET" in badging:
         raise ValueError('Debuggable or internet-enabled release refused')
     cert = run('keytool', '-exportcert', '-rfc', '-keystore', os.environ['KEYSTORE'], '-storepass:env', 'STORE_PASSWORD', '-alias', os.environ['KEY_ALIAS'])
-    import base64
-    der = base64.b64decode(''.join(line for line in cert.splitlines() if not line.startswith('---')))
-    expected = hashlib.sha256(der).hexdigest()
-    found = re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-f]+)', signature)
-    if not found or found.group(1) != expected:
-        raise ValueError('Signing certificate mismatch')
+    expected = certificate_digest(cert)
+    actual = signer_digest(signature)
+    if actual != expected:
+        # Public certificate fingerprints are safe diagnostics; never log the
+        # keystore, password, private key, alias, or raw subprocess output.
+        raise ValueError(f'Signing certificate mismatch (build-tools {BUILD_TOOLS_VERSION}; expected public SHA256 {expected}; APK public SHA256 {actual})')
     print(f'Verified {APP_ID}, {version} ({code}), signing certificate SHA256 {expected}')
 
 def publish(repo, tag, commit, assets):
