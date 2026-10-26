@@ -26,7 +26,7 @@ class StreamingCleanupTest {
                 val reader = QoaReader(it)
                 assertTrue(reader.totalFrames > AudioFiles.EDIT_SAMPLE_LIMIT)
                 var count = 0
-                while (true) { val samples = reader.readFrame() ?: break; count += samples.size; assertTrue(samples.all { sample -> sample.toInt() == 0 }) }
+                while (true) { val samples = reader.readFrame() ?: break; count += samples.size; assertTrue("Lossy QOA silence stays below -78 dBFS", samples.all { sample -> kotlin.math.abs(sample.toInt()) <= 4 }) }
                 assertEquals(blocks * 5120, count)
             }
             assertEquals(originalLength, source.length())

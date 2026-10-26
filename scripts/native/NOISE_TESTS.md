@@ -22,3 +22,10 @@ Host AddressSanitizer and UndefinedBehaviorSanitizer pass the same suite.
 LeakSanitizer cannot operate in the sandbox's ptrace environment; the sanitizer
 run uses `ASAN_OPTIONS=detect_leaks=0`. Android CPU/device quality measurements
 are not implied by these host results.
+
+The Android/host shared 16 kHz fixture uses Java Random(7) noise plus a changing
+harmonic fundamental and syllabic envelope. Its projection onto the clean voiced
+reference is 0.711 (required >0.60), checking aligned voice rather than merely
+output energy. A previous stationary 173 Hz sine fixture was invalid as a speech
+preservation test: Speex learns sustained tones as hum (host reproduced 0.143
+amplitude preservation). No denoiser settings were changed to accommodate tests.

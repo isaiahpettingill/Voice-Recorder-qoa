@@ -24,7 +24,7 @@ class QoaRecorder(private val context: Context, private val automaticName: Strin
     @Volatile private var frozenName: String? = null
     private val settings = context.getSharedPreferences("recording-presets", Context.MODE_PRIVATE)
     private val nameListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "recordingName") {
+        if (key == "recordingName" && frozenName == null) {
             try { automation?.persistName(RecordingPresetSettings.recordingName(context)) }
             catch (error: Exception) { failure = error }
         }

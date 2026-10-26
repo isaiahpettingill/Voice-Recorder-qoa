@@ -70,7 +70,15 @@ fun Context.createRecordingDocument(name: String, folder: String = config.saveRe
     // Do not replace an existing recording. Providers can otherwise truncate or silently rename it.
     var candidate = name
     var suffix = 1
-    while (directory.findFile(candidate) != null) {
+    while (true) {
+        val occupied = directory.findFile(candidate) != null
+        if (!occupied) {
+            if (directory.uri.scheme == "file") {
+                // Atomic reservation also protects against another process creating this name.
+                val file = File(checkNotNull(directory.uri.path), candidate)
+                if (file.createNewFile()) return@runCatching Uri.fromFile(file)
+            } else break
+        }
         val stem = name.substringBeforeLast('.', name)
         val extension = name.substringAfterLast('.', "")
         candidate = "$stem (${suffix++})" + if (extension.isEmpty()) "" else ".$extension"

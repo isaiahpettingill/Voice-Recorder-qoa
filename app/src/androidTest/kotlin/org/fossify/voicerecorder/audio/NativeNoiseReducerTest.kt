@@ -45,17 +45,31 @@ class NativeNoiseReducerTest {
     @Test fun spectralDenoiserPreservesVoicedSignalAndDoesNotShiftTime() {
         val rate = 16000
         val noise = Random(7)
-        val input = ShortArray(rate * 4) { i ->
-            val voice = if (i >= rate) 9000 * sin(2 * PI * 173 * i / rate) else 0.0
+        // A stationary sine becomes background hum to an adaptive denoiser.
+        // Use a synthetic changing-pitch harmonic/syllabic fixture instead; this
+        // is a regression signal, not a real-speech or perceptual benchmark.
+        val clean = ShortArray(rate * 4)
+        val input = ShortArray(clean.size) { i ->
+            val t = i.toDouble() / rate
+            val envelope = 0.3 + 0.7 * sin(2 * PI * 2 * t).pow(2)
+            val phase = 130 * t + 3 * (1 - cos(5 * t))
+            val voice = if (i < rate) 0.0 else (1..8).sumOf { harmonic ->
+                6500 * envelope * sin(2 * PI * harmonic * phase) / harmonic
+            }
+            clean[i] = voice.roundToInt().toShort()
             (voice + noise.nextInt(2001) - 1000).roundToInt().toShort()
         }
         val output = NativeNoiseReducer.reduce(input, rate, 1)
-        fun toneMagnitude(a: ShortArray): Double {
-            var re = 0.0; var im = 0.0
-            for (i in rate * 2 until rate * 3) { re += a[i] * cos(2 * PI * 173 * i / rate); im += a[i] * sin(2 * PI * 173 * i / rate) }
-            return hypot(re, im)
+        var projection = 0.0
+        var cleanEnergy = 0.0
+        for (i in rate * 2 until rate * 3) {
+            projection += output[i].toDouble() * clean[i]
+            cleanEnergy += clean[i].toDouble() * clean[i]
         }
-        assertTrue(toneMagnitude(output) > toneMagnitude(input) * 0.5)
+        // Projection rejects silence, uncorrelated noise and shifted speech;
+        // reference Speex 1.2.1 host result is 0.711 (not a listening benchmark).
+        assertTrue("Changing voiced harmonics should be preserved: ${projection / cleanEnergy}",
+            projection / cleanEnergy > 0.60)
         val impulse = ShortArray(rate); impulse[rate / 2] = 30000
         val transient = NativeNoiseReducer.reduce(impulse, rate, 1)
         assertEquals(rate / 2, transient.indices.maxBy { transient[it] })

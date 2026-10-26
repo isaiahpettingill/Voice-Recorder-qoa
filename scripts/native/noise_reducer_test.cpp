@@ -58,6 +58,37 @@ int main() {
     std::cout << "noise-only attenuation: " << noiseDb << " dB; voiced energy ratio: " << voiceRatio << '\n';
     assert(noiseDb < -6);
     assert(voiceRatio > 0.25 && voiceRatio < 1.5);
+    // Same Java-Random(7) fixture as Android: changing harmonics, not a
+    // stationary sine (a sustained sine is legitimately learned as hum).
+    constexpr int speechRate = 16000;
+    uint64_t seed = (7ULL ^ 0x5DEECE66DULL) & ((1ULL << 48) - 1);
+    auto javaNoise = [&]() {
+        int bits, value;
+        do {
+            seed = (seed * 0x5DEECE66DULL + 0xB) & ((1ULL << 48) - 1);
+            bits = static_cast<int>(seed >> 17); value = bits % 2001;
+        } while (int64_t(bits) - value + 2000 > 2147483647);
+        return value - 1000;
+    };
+    Samples speechClean(speechRate * 4), speechNoisy(speechRate * 4);
+    for (int i = 0; i < speechRate * 4; ++i) {
+        double t = double(i) / speechRate;
+        double envelope = 0.3 + 0.7 * std::pow(std::sin(2 * M_PI * 2 * t), 2);
+        double phase = 130 * t + 3 * (1 - std::cos(5 * t));
+        double voiced = 0;
+        if (i >= speechRate) for (int h = 1; h <= 8; ++h)
+            voiced += 6500 * envelope * std::sin(2 * M_PI * h * phase) / h;
+        speechClean[i] = static_cast<int16_t>(std::floor(voiced + 0.5));
+        speechNoisy[i] = static_cast<int16_t>(std::floor(voiced + javaNoise() + 0.5));
+    }
+    auto preserved = run(speechNoisy, speechRate, 1, 65536);
+    double projection = 0, cleanEnergy = 0;
+    for (int i = speechRate * 2; i < speechRate * 3; ++i) {
+        projection += double(preserved[i]) * speechClean[i];
+        cleanEnergy += double(speechClean[i]) * speechClean[i];
+    }
+    std::cout << "Android fixture clean voice projection: " << projection / cleanEnergy << '\n';
+    assert(projection / cleanEnergy > 0.60);
     // Stereo independence: left channel matches mono exactly; right stays silent.
     Samples stereo(input.size()*2);
     for (size_t i = 0; i < input.size(); ++i) stereo[2*i] = input[i];
