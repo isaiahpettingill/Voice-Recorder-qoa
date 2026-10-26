@@ -12,9 +12,31 @@ permissions:
 
 concurrency:
   group: recorder-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      device: ${{ steps.plan.outputs.device }}
+      reused_run: ${{ steps.plan.outputs.reused_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci_plan.py >> "$GITHUB_OUTPUT"
+      - name: Test CI selection guards
+        run: python3 -m unittest discover -s scripts -p 'test_ci_plan.py'
+
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -35,7 +57,10 @@ jobs:
       - name: Verify release tooling
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Test, lint and assemble without release credentials
-        run: ./gradlew --no-daemon :buildSrc:test testFossDebugUnitTest lintFossDebug assembleFossDebug assembleFossRelease
+        run: ./gradlew --no-daemon :buildSrc:test testFossDebugUnitTest lintFossDebug assembleFossDebug
+      - name: Validate minified packaging on PRs and full manual runs
+        if: github.event_name != 'push'
+        run: ./gradlew --no-daemon assembleFossRelease
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -44,7 +69,18 @@ jobs:
             app/build/reports
             app/build/test-results
 
+      - name: Record actual tested checkout tree
+        run: python3 scripts/ci_plan.py record
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-tree
+          path: ci-tree.json
+          retention-days: 14
+          overwrite: true
+
   device-checks:
+    needs: [plan]
+    if: needs.plan.outputs.device == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -77,8 +113,11 @@ jobs:
           path: app/build/reports/androidTests
 
   release:
-    needs: [checks, device-checks]
-    if: github.repository == 'isaiahpettingill/Voice-Recorder-qoa' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [plan, checks, device-checks]
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' && needs.checks.result == 'success' &&
+      (needs.device-checks.result == 'success' || (needs.plan.outputs.device == 'false' && needs.device-checks.result == 'skipped')) &&
+      github.repository == 'isaiahpettingill/Voice-Recorder-qoa' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
