@@ -25,6 +25,7 @@ import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.databinding.ActivitySettingsBinding
 import org.fossify.voicerecorder.dialogs.FilenamePatternDialog
 import org.fossify.voicerecorder.dialogs.MoveRecordingsDialog
+import org.fossify.voicerecorder.extensions.recordingsDirectory
 import org.fossify.voicerecorder.extensions.config
 import org.fossify.voicerecorder.extensions.deleteTrashedRecordings
 import org.fossify.voicerecorder.extensions.getAllRecordings
@@ -139,7 +140,7 @@ class SettingsActivity : SimpleActivity() {
     private fun setupSaveRecordingsFolder() {
         binding.settingsSaveRecordingsLabel.text =
             getString(R.string.save_recordings_in)
-        binding.settingsSaveRecordings.text = humanizePath(config.saveRecordingsFolder)
+        binding.settingsSaveRecordings.text = recordingsDirectory()?.name ?: "Choose a shared folder…"
         binding.settingsSaveRecordingsHolder.setOnClickListener {
             val currentFolder = config.saveRecordingsFolder
             launchFolderPicker(currentFolder) { newFolder ->
@@ -155,12 +156,12 @@ class SettingsActivity : SimpleActivity() {
                                 ) {
                                     config.saveRecordingsFolder = newFolder
                                     binding.settingsSaveRecordings.text =
-                                        humanizePath(config.saveRecordingsFolder)
+                                        recordingsDirectory()?.name ?: "Choose a shared folder…"
                                 }
                             } else {
                                 config.saveRecordingsFolder = newFolder
                                 binding.settingsSaveRecordings.text =
-                                    humanizePath(config.saveRecordingsFolder)
+                                    recordingsDirectory()?.name ?: "Choose a shared folder…"
                             }
                         }
                     }

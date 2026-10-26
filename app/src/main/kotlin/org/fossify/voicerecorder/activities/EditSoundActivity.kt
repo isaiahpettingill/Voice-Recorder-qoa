@@ -8,7 +8,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import org.fossify.voicerecorder.audio.*
 import org.fossify.voicerecorder.extensions.config
-import org.fossify.voicerecorder.extensions.createDocumentFile
+import org.fossify.voicerecorder.extensions.createRecordingDocument
+import org.fossify.voicerecorder.extensions.ensureStoragePermission
 import org.fossify.voicerecorder.models.Events
 import org.fossify.commons.helpers.isRPlus
 import org.greenrobot.eventbus.EventBus
@@ -95,7 +96,7 @@ class EditSoundActivity : SimpleActivity() {
         controls.addView(trim)
         button("Preview") { render(save = false) }
         button("Stop preview") { stopPreview() }
-        button("Save QOA copy") { render(save = true) }
+        button("Save QOA copy") { ensureStoragePermission { granted -> if (granted) render(save = true) } }
         button("Export WAV…") { render(save = false, export = true) }
         button("Reset") { stopPreview(); gain.progress = 24; pitch.progress = 24; formant.progress = 24; effectMix.progress = 0; speed.progress = 50; normalize.isChecked = false; preset.setSelection(0); trimStart.setText("0"); trimEnd.setText("") }
         button("Close") { finish() }
@@ -189,10 +190,10 @@ class EditSoundActivity : SimpleActivity() {
                 if (save) {
                     val name = "${intent.getStringExtra("title")?.substringBeforeLast('.')?.replace(Regex("[^a-zA-Z0-9 _-]"), "_")?.take(60) ?: "Sound"}_edit_${System.currentTimeMillis()}.qoa"
                     val destination = File(config.saveRecordingsFolder, name)
-                    if (isRPlus()) {
-                        val uri = checkNotNull(createDocumentFile(destination.absolutePath)) { "Select a recording folder first." }
+                    if (isRPlus() || config.saveRecordingsFolder.startsWith("content://")) {
+                        val uri = checkNotNull(createRecordingDocument(name)) { "Select a recording folder first." }
                         try { checkNotNull(contentResolver.openOutputStream(uri, "w")).use { output -> temp.inputStream().use { it.copyTo(output) } } }
-                        catch (error: Exception) { android.provider.DocumentsContract.deleteDocument(contentResolver, uri); throw error }
+                        catch (error: Exception) { if (uri.scheme == "file") File(requireNotNull(uri.path)).delete() else runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, uri) }; throw error }
                     } else {
                         check(!destination.exists())
                         try { temp.inputStream().use { inputStream -> destination.outputStream().use { inputStream.copyTo(it) } } }

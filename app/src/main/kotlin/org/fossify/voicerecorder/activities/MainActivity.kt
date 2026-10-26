@@ -78,14 +78,7 @@ class MainActivity : SimpleActivity() {
 
         bus = EventBus.getDefault()
         bus!!.register(this)
-        if (config.recordAfterLaunch && !RecorderService.isRunning) {
-            Intent(this@MainActivity, RecorderService::class.java).apply {
-                try {
-                    startService(this)
-                } catch (ignored: Exception) {
-                }
-            }
-        }
+
     }
 
     override fun onResume() {
@@ -216,23 +209,11 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun tryInitVoiceRecorder() {
-        if (isRPlus()) {
-            ensureStoragePermission { granted ->
-                if (granted) {
-                    setupViewPager()
-                } else {
-                    toast(org.fossify.commons.R.string.no_storage_permissions)
-                    finish()
-                }
-            }
-        } else {
-            handlePermission(PERMISSION_WRITE_STORAGE) {
-                if (it) {
-                    setupViewPager()
-                } else {
-                    toast(org.fossify.commons.R.string.no_storage_permissions)
-                    finish()
-                }
+        ensureStoragePermission { granted ->
+            // Cancel leaves the app usable for playback, import, settings and recovery export.
+            setupViewPager()
+            if (granted && config.recordAfterLaunch && !RecorderService.isRunning) {
+                runCatching { startService(Intent(this, RecorderService::class.java)) }
             }
         }
     }

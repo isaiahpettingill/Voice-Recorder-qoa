@@ -41,8 +41,40 @@ import kotlin.math.roundToLong
 
 val Context.config: Config get() = Config.newInstance(applicationContext)
 
-val Context.trashFolder
-    get() = "${config.saveRecordingsFolder}/.trash"
+val Context.trashFolder: String
+    get() = if (config.saveRecordingsFolder.startsWith("content://")) {
+        runCatching { recordingsDirectory()?.findFile(".trash")?.uri?.toString() }.getOrNull().orEmpty()
+    } else "${config.saveRecordingsFolder}/.trash"
+
+/** Keep provider document IDs opaque; never reinterpret a content URI as a disk path. */
+fun Context.recordingsDirectory(folder: String = config.saveRecordingsFolder): DocumentFile? = runCatching {
+    if (folder.startsWith("content://")) {
+        val uri = Uri.parse(folder)
+        if (!DocumentsContract.isTreeUri(uri)) return@runCatching null
+        DocumentFile.fromTreeUri(this, uri)?.takeIf { it.isDirectory && it.canRead() }
+    } else if (folder.isNotBlank()) {
+        // Prefer a previously granted SAF path during migration from older versions.
+        val granted = if (isRPlus()) runCatching { getDocumentSdk30(folder) }.getOrNull() else null
+        granted?.takeIf { it.isDirectory && it.canRead() } ?: File(folder).let { local ->
+            if (local.isDirectory && local.canRead()) DocumentFile.fromFile(local) else null
+        }
+    } else null
+}.getOrNull()
+
+fun Context.createRecordingDocument(name: String, folder: String = config.saveRecordingsFolder): Uri? = runCatching {
+    require(name.isNotBlank() && name != "." && name != ".." && '/' !in name && '\\' !in name)
+    val directory = recordingsDirectory(folder) ?: return@runCatching null
+    if (!directory.canWrite()) return@runCatching null
+    // Do not replace an existing recording. Providers can otherwise truncate or silently rename it.
+    var candidate = name
+    var suffix = 1
+    while (directory.findFile(candidate) != null) {
+        val stem = name.substringBeforeLast('.', name)
+        val extension = name.substringAfterLast('.', "")
+        candidate = "$stem (${suffix++})" + if (extension.isEmpty()) "" else ".$extension"
+    }
+    directory.createFile(if (name.endsWith(".qoa", true)) "audio/x-qoa" else name.getMimeType(), candidate)?.uri
+}.getOrNull()
 
 fun Context.drawableToBitmap(drawable: Drawable): Bitmap {
     val size = (60 * resources.displayMetrics.density).toInt()
@@ -72,11 +104,17 @@ fun Context.updateWidgets(isRecording: Boolean) {
 }
 
 fun Context.getOrCreateTrashFolder(): String {
-    val folder = File(trashFolder)
-    if (!folder.exists()) {
-        folder.mkdir()
+    if (config.saveRecordingsFolder.startsWith("content://")) {
+        val root = recordingsDirectory() ?: return ""
+        return runCatching {
+            val existing = root.findFile(".trash")
+            val directory = existing?.takeIf { it.isDirectory } ?: if (existing == null) root.createDirectory(".trash") else null
+            directory?.uri?.toString().orEmpty()
+        }.getOrDefault("")
     }
-    return trashFolder
+    val folder = File(trashFolder)
+    if (!folder.exists() && !folder.mkdirs()) return ""
+    return folder.absolutePath
 }
 
 fun Context.getDefaultRecordingsFolder(): String {
@@ -92,23 +130,12 @@ fun Context.getDefaultRecordingsRelativePath(): String {
     }
 }
 
-fun Context.hasRecordings(): Boolean {
-    val recordingsFolder = config.saveRecordingsFolder
-    return if (isRPlus()) {
-        getDocumentSdk30(recordingsFolder)
-            ?.listFiles()
-            ?.any { it.isAudioRecording() }
-            ?: false
-    } else {
-        File(recordingsFolder)
-            .listFiles()
-            ?.any { (it.isAudioFast() || it.extension.equals("qoa", true)) }
-            ?: false
-    }
-}
+fun Context.hasRecordings(): Boolean = runCatching {
+    recordingsDirectory()?.listFiles()?.any { it.isAudioRecording() } ?: false
+}.getOrDefault(false)
 
 fun Context.getAllRecordings(trashed: Boolean = false): ArrayList<Recording> {
-    return if (isRPlus()) {
+    return if (isRPlus() || config.saveRecordingsFolder.startsWith("content://")) {
         val recordings = arrayListOf<Recording>()
         recordings.addAll(getRecordings(trashed))
         if (trashed) {
@@ -126,13 +153,12 @@ fun Context.getAllRecordings(trashed: Boolean = false): ArrayList<Recording> {
 private fun Context.getRecordings(trashed: Boolean = false): ArrayList<Recording> {
     val recordings = ArrayList<Recording>()
     val folder = if (trashed) trashFolder else config.saveRecordingsFolder
-    val files = getDocumentSdk30(folder)?.listFiles() ?: return recordings
+    val files = runCatching { recordingsDirectory(folder)?.listFiles() }.getOrNull() ?: return recordings
     files.forEach { file ->
-        if (file.isAudioRecording()) {
-            recordings.add(
-                readRecordingFromFile(file)
-            )
+        runCatching {
+            if (file.isFile && file.isAudioRecording()) recordings.add(readRecordingFromFile(file))
         }
+
     }
 
     return recordings
@@ -145,7 +171,7 @@ private fun Context.getRecordings(trashed: Boolean = false): ArrayList<Recording
 private fun Context.getMediaStoreTrashedRecordings(): ArrayList<Recording> {
     val recordings = ArrayList<Recording>()
     val folder = config.saveRecordingsFolder
-    val documentFiles = getDocumentSdk30(folder)?.listFiles() ?: return recordings
+    val documentFiles = runCatching { recordingsDirectory(folder)?.listFiles() }.getOrNull() ?: return recordings
     documentFiles.forEach { file ->
         if (file.isTrashedMediaStoreRecording()) {
             val recording = readRecordingFromFile(file)
@@ -191,11 +217,11 @@ private fun Context.getLegacyRecordings(trashed: Boolean = false): ArrayList<Rec
 }
 
 private fun Context.readRecordingFromFile(file: DocumentFile): Recording {
-    val id = file.hashCode()
+    val id = file.uri.toString().hashCode()
     val title = file.name!!
-    val path = file.uri.toString()
+    val path = if (file.uri.scheme == "file") file.uri.path.orEmpty() else file.uri.toString()
     val timestamp = file.lastModified()
-    val duration = if (file.name?.endsWith(".qoa", true) == true) runCatching { AudioFiles.qoaDuration(this, file.uri.toString()).toLong() }.getOrDefault(0L) else getDurationFromUri(file.uri)
+    val duration = if (file.name?.endsWith(".qoa", true) == true) runCatching { AudioFiles.qoaDuration(this, path).toLong() }.getOrDefault(0L) else getDurationFromUri(file.uri)
     val size = file.length().toInt()
     return Recording(
         id = id,
@@ -210,33 +236,13 @@ private fun Context.readRecordingFromFile(file: DocumentFile): Recording {
 private fun Context.getDurationFromUri(uri: Uri): Long {
     return try {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(this, uri)
-        val time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!
-        (time.toLong() / 1000.toDouble()).roundToLong()
+        try {
+            retriever.setDataSource(this, uri)
+            val time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!
+            (time.toLong() / 1000.toDouble()).roundToLong()
+        } finally { retriever.release() }
     } catch (e: Exception) {
         0L
-    }
-}
-
-// Based on common's `Context.createSAFFileSdk30` extension
-fun Context.createDocumentFile(path: String): Uri? {
-    return try {
-        val treeUri = createFirstParentTreeUri(path)
-        val parentPath = path.getParentPath()
-        if (!getDoesFilePathExistSdk30(parentPath)) {
-            createSAFDirectorySdk30(parentPath)
-        }
-
-        val documentId = getSAFDocumentId(parentPath)
-        val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
-        DocumentsContract.createDocument(
-            contentResolver,
-            parentUri,
-            if (path.endsWith(".qoa", true)) "audio/x-qoa" else path.getMimeType(),
-            path.getFilenameFromPath()
-        )
-    } catch (@Suppress("SwallowedException") e: IllegalStateException) {
-        null
     }
 }
 
