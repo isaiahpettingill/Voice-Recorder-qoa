@@ -8,6 +8,7 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import org.fossify.voicerecorder.activities.EditSoundActivity
 import org.fossify.voicerecorder.audio.*
 import org.fossify.voicerecorder.recorder.QoaRecorder
@@ -59,11 +60,12 @@ class AudioWorkflowTest {
                     if (!loaded) Thread.sleep(50)
                 }
                 assertTrue("Audio loads into editor", loaded)
-                onView(withText("Preview")).perform(scrollTo(), click())
+                onView(withText("Preview")).perform(click())
                 Thread.sleep(300)
-                onView(withText("Stop preview")).perform(scrollTo(), click())
-                onView(withText("Reset")).perform(scrollTo(), click())
-                onView(withText("Close")).perform(scrollTo(), click())
+                onView(withText("Stop preview")).perform(click())
+                onView(withContentDescription("More editing options")).perform(click())
+                onView(withText("Reset")).perform(click())
+                onView(withText("Back")).perform(click())
             }
             assertArrayEquals(bytes, qoa.readBytes())
         } finally { qoa.delete() }
@@ -149,8 +151,10 @@ class AudioWorkflowTest {
             val failure = runCatching { recorder.release() }.exceptionOrNull()
             assertNotNull("Final output failure must be reported", failure)
             val retained = recoveries() - before
-            assertEquals("The sole captured copy must survive", 1, retained.size)
-            val recovered = retained.single().inputStream().use { QoaCodec.read(it) }
+            val audio = retained.filter { it.extension == "qoa" }
+            assertEquals("The sole captured audio copy must survive", 1, audio.size)
+            assertTrue("Preset journal survives alongside audio", File(audio.single().path + ".presets.json").isFile)
+            val recovered = audio.single().inputStream().use { QoaCodec.read(it) }
             assertTrue("Recovery contains valid recorded samples", recovered.samples.isNotEmpty())
         } finally {
             recorder.discard(); runCatching { recorder.release() }

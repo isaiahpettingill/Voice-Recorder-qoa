@@ -8,6 +8,6 @@ mkdir -p build/native-tests
   scripts/native/voice_processor_test.cpp "$cpp/VoiceProcessor.cpp" \
   "$cpp/vendor/rubberband/single/RubberBandSingle.cpp" \
   "$cpp/vendor/klarinet/dsp/primitives/"{Biquad,CircularBuffer,LFO}.cpp \
-  "$cpp/vendor/klarinet/dsp/effects/"{Tremolo,HighPassFilter,LowPassFilter,Chorus,Delay}.cpp \
+  "$cpp/vendor/klarinet/dsp/effects/"{Tremolo,HighPassFilter,LowPassFilter,Chorus,Delay,Reverb,Flanger,Phaser}.cpp \
   -o build/native-tests/voice-processor-test
 build/native-tests/voice-processor-test

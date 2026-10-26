@@ -32,7 +32,12 @@ class NativeVoiceEffectsTest {
         for(effect in VoicePreset.entries.filter { it!=VoicePreset.NONE }) {
             val out=AudioEffects.process(input,effect.defaults())
             assertFalse(input.samples.contentEquals(out.samples))
-            for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
+            if (effect == VoicePreset.CAVE) {
+                // Freeverb intentionally decorrelates stereo with different delay lengths.
+                assertTrue((0 until out.frames).any { out.samples[it*2] != out.samples[it*2+1] })
+                assertTrue((0 until out.frames).any { out.samples[it*2].toInt() != 0 })
+                assertTrue((0 until out.frames).any { out.samples[it*2+1].toInt() != 0 })
+            } else for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
         }
         val out=AudioEffects.process(input,EditOptions(speed=1.5,pitchSemitones=5.0))
         for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])

@@ -20,6 +20,8 @@ class QoaRecorder(private val context: Context) : Recorder {
     private var source: AudioRecord? = null
     private var worker: Thread? = null
     private var temporary: File? = null
+    private var automation: RecordingAutomation? = null
+    private var capturedFrames = 0L
     private var discard = false
     private var finalized = false
     @Volatile private var stopped = false
@@ -41,6 +43,7 @@ class QoaRecorder(private val context: Context) : Recorder {
         }
         val recovery = File(context.filesDir, "recording-recovery").apply { mkdirs() }
         temporary = File.createTempFile("recording-", ".qoa", recovery)
+        automation = RecordingAutomation(checkNotNull(temporary), rate)
     }
     override fun start() {
         val input = checkNotNull(source)
@@ -59,7 +62,10 @@ class QoaRecorder(private val context: Context) : Recorder {
                             var peak = 0
                             for (index in 0 until count) peak = maxOf(peak, abs(buffer[index].toInt()))
                             amplitude.set(peak)
+                            val journal = checkNotNull(automation)
+                            if (journal.timeline.accept(capturedFrames, RecordingPresetSettings.load(context))) journal.persist()
                             writer.append(buffer, count)
+                            capturedFrames += count
                         }
                     }
                     } finally {
@@ -100,16 +106,24 @@ class QoaRecorder(private val context: Context) : Recorder {
                     (descriptor?.let { FileOutputStream(it.fileDescriptor) }
                         ?: FileOutputStream(checkNotNull(path))).use { output -> input.copyTo(output); output.flush() }
                 }
+                // Complete all publication I/O before recording that the dry copy is safe.
+                descriptor?.close(); descriptor = null
+                if (automation?.timeline?.hasEffects == true) automation?.markDryPublished()
                 saved = true
             }
         } catch (error: Exception) {
             throw IllegalStateException("Could not save recording. Recovery file retained: ${temporary?.absolutePath}. ${error.message}", error)
         } finally {
-            source?.release(); source = null
-            descriptor?.close(); descriptor = null
+            // Cleanup errors must not turn a successfully published dry copy into a failed save.
+            runCatching { source?.release() }; source = null
+            runCatching { descriptor?.close() }; descriptor = null
             // Failed copies must never delete the only original. A live writer owns its file.
-            if (worker?.isAlive != true && (saved || discard)) { temporary?.delete(); temporary = null }
+            if (worker?.isAlive != true && (discard || (saved && automation?.timeline?.hasEffects != true))) {
+                automation?.delete(); temporary?.delete(); temporary = null
+            }
         }
     }
+    fun renderPresetCopy(folder: String): android.net.Uri? =
+        automation?.takeIf { it.timeline.hasEffects }?.render(context, folder)
     override fun getMaxAmplitude() = amplitude.get()
 }

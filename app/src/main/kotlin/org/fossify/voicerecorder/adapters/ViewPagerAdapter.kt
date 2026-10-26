@@ -21,7 +21,8 @@ class ViewPagerAdapter(
         val layout = when (position) {
             0 -> R.layout.fragment_recorder
             1 -> R.layout.fragment_player
-            2 -> R.layout.fragment_trash
+            2 -> R.layout.fragment_edit
+            3 -> R.layout.fragment_trash
             else -> throw IllegalArgumentException("Invalid position. Count = $count, requested position = $position")
         }
 
@@ -33,36 +34,40 @@ class ViewPagerAdapter(
     }
 
     override fun destroyItem(container: ViewGroup, position: Int, item: Any) {
-        container.removeView(item as View)
+        (item as MyViewPagerFragment).onDestroy()
+        fragments.remove(position)
+        container.removeView(item)
     }
 
-    override fun getCount() = if (showRecycleBin) 3 else 2
+    override fun getCount() = if (showRecycleBin) 4 else 3
 
     override fun isViewFromObject(view: View, item: Any) = view == item
 
     fun onResume() {
         for (i in 0 until fragments.size()) {
-            fragments[i].onResume()
+            fragments.valueAt(i).onResume()
         }
     }
 
     fun onDestroy() {
         for (i in 0 until fragments.size()) {
-            fragments[i].onDestroy()
+            fragments.valueAt(i).onDestroy()
         }
     }
+
+    fun refreshEditor() { fragments[2]?.loadRecordings() }
 
     fun finishActMode() {
         (fragments[1] as? PlayerFragment)?.finishActMode()
         if (showRecycleBin) {
-            (fragments[2] as? TrashFragment)?.finishActMode()
+            (fragments[3] as? TrashFragment)?.finishActMode()
         }
     }
 
     fun searchTextChanged(text: String) {
         (fragments[1] as? PlayerFragment)?.onSearchTextChanged(text)
         if (showRecycleBin) {
-            (fragments[2] as? TrashFragment)?.onSearchTextChanged(text)
+            (fragments[3] as? TrashFragment)?.onSearchTextChanged(text)
         }
     }
 }

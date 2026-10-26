@@ -13,6 +13,9 @@ add_library(voice-dsp SHARED
     vendor/klarinet/dsp/effects/LowPassFilter.cpp
     vendor/klarinet/dsp/effects/Chorus.cpp
     vendor/klarinet/dsp/effects/Delay.cpp
+    vendor/klarinet/dsp/effects/Reverb.cpp
+    vendor/klarinet/dsp/effects/Flanger.cpp
+    vendor/klarinet/dsp/effects/Phaser.cpp
 )
 target_include_directories(voice-dsp PRIVATE vendor/klarinet/dsp)
 target_compile_options(voice-dsp PRIVATE -fexceptions -frtti)

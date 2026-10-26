@@ -3,7 +3,7 @@ package org.fossify.voicerecorder.audio
 import kotlin.math.*
 
 /** Starting points, not claims of identity or guaranteed gender conversion. See docs/VOICE_PRESETS.md. */
-enum class VoicePreset(val title: String, val pitch: Double, val formants: Double, val effect: Int = 0, val mix: Double = 0.0) {
+enum class VoicePreset(val title: String, val pitch: Double, val formants: Double, val effect: Int = 0, val mix: Double = 0.0, val isSoundEffect: Boolean = false) {
     NONE("Clean", 0.0, 0.0),
     FEMININE("Feminine", 4.5, 2.0),
     MASCULINE("Masculine", -4.0, -2.0),
@@ -11,7 +11,12 @@ enum class VoicePreset(val title: String, val pitch: Double, val formants: Doubl
     DEEP("Deep voice", -7.0, -3.0),
     ROBOT("Robot (amplitude modulation)", 0.0, 0.0, 1, 0.65),
     RADIO("Radio", 0.0, 0.0, 2, 0.85),
-    EIGHTIES("80s chorus + echo", 0.0, 0.0, 3, 0.5);
+    EIGHTIES("80s chorus + echo", 0.0, 0.0, 3, 0.5),
+    ECHO("Echo", 0.0, 0.0, 4, 0.5, true),
+    CAVE("Cave", 0.0, 0.0, 5, 0.5, true),
+    CHORUS("Chorus", 0.0, 0.0, 6, 0.5, true),
+    FLANGER("Flanger", 0.0, 0.0, 7, 0.5, true),
+    PHASER("Phaser", 0.0, 0.0, 8, 0.5, true);
 
     fun defaults() = EditOptions(pitchSemitones = pitch, formantSemitones = formants, preset = this, effectMix = mix)
 }

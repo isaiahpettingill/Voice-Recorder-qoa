@@ -6,6 +6,20 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <LinearLayout
+        android:id="@+id/recording_presets"
+        android:layout_width="0dp" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingHorizontal="16dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" app:layout_constraintEnd_toEndOf="parent">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/recording_preset" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Clean" android:textAllCaps="false" />
+            <Button android:id="@+id/recording_tune" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Tune" android:textAllCaps="false" />
+        </LinearLayout>
+        <TextView android:id="@+id/recording_effects_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Effects saved after recording · Original kept" android:textSize="12sp" android:gravity="center" />
+        <Button android:id="@+id/recording_pending_effects" android:layout_width="match_parent" android:layout_height="48dp" android:text="Retry pending effects" android:textAllCaps="false" android:visibility="gone" />
+    </LinearLayout>
+
     <com.visualizer.amplitude.AudioRecordView
         android:id="@+id/recorder_visualizer"
         android:layout_width="match_parent"
@@ -20,7 +34,7 @@
         app:chunkSpace="1dp"
         app:chunkWidth="3dp"
         app:layout_constraintBottom_toTopOf="@+id/recording_duration"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/recording_presets" />
 
     <org.fossify.commons.views.MyTextView
         android:id="@+id/recording_duration"
