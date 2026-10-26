@@ -89,10 +89,14 @@ class SharedStorageWorkflowTest {
         assertEquals(uri.toString(), entries.single().path)
         assertTrue(context.hasRecordings())
         assertEquals(1600, AudioFiles.readForEditing(context, entries.single().path).samples.size)
-        // New Context / Config object must reuse the saved opaque URI, not a reconstructed path.
-        val reopened = context.createPackageContext(context.packageName, 0)
-        assertEquals(tree.toString(), reopened.config.saveRecordingsFolder)
-        assertEquals(1, reopened.getAllRecordings().size)
+        // Activity recreation must reuse the saved opaque URI, not a reconstructed path.
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.recreate()
+            scenario.onActivity { reopened ->
+                assertEquals(tree.toString(), reopened.config.saveRecordingsFolder)
+                assertEquals(1, reopened.getAllRecordings().size)
+            }
+        }
         val renamed = DocumentsContract.renameDocument(context.contentResolver, uri, "renamed.qoa")!!
         assertEquals("renamed.qoa", context.getAllRecordings().single().title)
         assertTrue(AudioFiles.isQoa(context, renamed.toString()))
