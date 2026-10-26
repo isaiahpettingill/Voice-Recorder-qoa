@@ -1,5 +1,6 @@
 package org.fossify.voicerecorder
 
+import org.fossify.commons.extensions.getProperBackgroundColor
 import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
@@ -136,6 +137,30 @@ class VoicePresetControlsTest {
                 }
             }
         } finally { file.delete() }
+    }
+
+    @Test fun editorHasReadableContrastAfterDarkThemeRecreation() {
+        val file = File.createTempFile("theme-controls-", ".qoa", context.cacheDir)
+        file.writeBytes(QoaCodec.encode(PcmAudio(ShortArray(16000),16000,1)))
+        val uiMode = context.getSystemService(android.app.UiModeManager::class.java)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 31) uiMode.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_YES)
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("settings put system font_scale 1.3")).use { it.readBytes() }
+            ActivityScenario.launch<EditSoundActivity>(Intent(context, EditSoundActivity::class.java).putExtra("path",file.path)).use { scenario ->
+                scenario.recreate()
+                instrumentation.waitForIdleSync()
+                scenario.onActivity { activity ->
+                    val title = views(activity).filterIsInstance<TextView>().single { it.text == "Edit sound" }
+                    val surface = activity.getProperBackgroundColor()
+                    assertTrue("Editor text remains readable", androidx.core.graphics.ColorUtils.calculateContrast(title.currentTextColor,surface) >= 4.5)
+                }
+                ScreenshotEvidence.capture("editor-dark-large-text")
+            }
+        } finally {
+            if (android.os.Build.VERSION.SDK_INT >= 31) uiMode.setApplicationNightMode(android.app.UiModeManager.MODE_NIGHT_NO)
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("settings put system font_scale 1.0")).use { it.readBytes() }
+            file.delete()
+        }
     }
 
 }

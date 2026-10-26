@@ -1,5 +1,7 @@
 package org.fossify.voicerecorder.fragments
 
+import org.fossify.voicerecorder.views.applyEditorTheme
+import org.fossify.commons.extensions.getProperBackgroundColor
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -37,7 +39,7 @@ class EditFragment(context: Context, attrs: AttributeSet) : MyViewPagerFragment(
         addView(ScrollView(context).apply { addView(content) }, LayoutParams(-1, -1))
     }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); onResume() }
-    override fun onResume() { disposed = false; loadRecordings() }
+    override fun onResume() { disposed = false; setBackgroundColor(context.getProperBackgroundColor()); applyEditorTheme(); loadRecordings() }
     override fun onDestroy() { disposed = true }
     override fun onLoadingEnd(recordings: ArrayList<Recording>) {
         if (disposed) return
@@ -55,5 +57,6 @@ class EditFragment(context: Context, attrs: AttributeSet) : MyViewPagerFragment(
                 }
             })
         }
+        applyEditorTheme()
     }
 }

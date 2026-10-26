@@ -1,6 +1,9 @@
 package org.fossify.voicerecorder.activities
 import org.fossify.voicerecorder.R
 
+import org.fossify.voicerecorder.views.applyEditorTheme
+import org.fossify.voicerecorder.views.PresetAdapter
+import org.fossify.commons.extensions.getProperBackgroundColor
 import android.content.Intent
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -140,6 +143,8 @@ class EditSoundActivity : SimpleActivity() {
             tuning.visibility = if (it.getBoolean("tuningOpen")) android.view.View.VISIBLE else android.view.View.GONE
             trimSection.visibility = if (it.getBoolean("trimOpen")) android.view.View.VISIBLE else android.view.View.GONE
         }
+        root.setBackgroundColor(getProperBackgroundColor())
+        root.applyEditorTheme()
         val path = intent.getStringExtra("path") ?: intent.data?.toString()
         if (path == null) { finish(); return }
         busy = true
@@ -154,9 +159,17 @@ class EditSoundActivity : SimpleActivity() {
             } catch (error: Exception) { showFailure(error) }
         }
     }
+    override fun onResume() {
+        super.onResume()
+        findViewById<android.view.ViewGroup>(android.R.id.content)?.let { content ->
+            content.setBackgroundColor(getProperBackgroundColor())
+            for (i in 0 until content.childCount) content.getChildAt(i).setBackgroundColor(getProperBackgroundColor())
+            content.applyEditorTheme()
+        }
+    }
     private fun populatePresets(soundEffects: Boolean) {
         visiblePresets = VoicePreset.entries.filter { it.isSoundEffect == soundEffects }
-        preset.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, visiblePresets.map { it.title })
+        preset.adapter = PresetAdapter(this, visiblePresets.map { it.title })
         val index = visiblePresets.indexOf(selectedPreset)
         if (index >= 0) preset.setSelection(index)
         else { selectedPreset = visiblePresets.first(); preset.setSelection(0); applyPreset(selectedPreset) }

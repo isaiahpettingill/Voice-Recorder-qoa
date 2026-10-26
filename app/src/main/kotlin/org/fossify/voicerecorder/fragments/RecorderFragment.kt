@@ -10,6 +10,7 @@ import java.io.File
 import org.fossify.voicerecorder.audio.VoicePreset
 import org.fossify.voicerecorder.recorder.RecordingPresetSettings
 import org.fossify.voicerecorder.recorder.RecordingAutomation
+import org.fossify.voicerecorder.views.applyEditorTheme
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -144,6 +145,7 @@ class RecorderFragment(
     private fun refreshPresets() {
         val options = RecordingPresetSettings.load(context)
         val supported = context.config.extension == org.fossify.voicerecorder.helpers.EXTENSION_QOA
+        binding.recordingPresets.applyEditorTheme()
         binding.recordingPreset.text = options.preset.title
         binding.recordingPreset.isEnabled = supported
         binding.recordingTune.isEnabled = supported
@@ -182,6 +184,7 @@ class RecorderFragment(
         slider("Formants",options.formantSemitones,-12.0,12.0) { options=options.copy(formantSemitones=it) }
         slider("Speed",options.speed,.5,2.0) { options=options.copy(speed=it) }
         if(options.preset.effect != 0) slider("Effect mix",options.effectMix,0.0,1.0) { options=options.copy(effectMix=it) }
+        panel.applyEditorTheme()
         AlertDialog.Builder(context).setTitle("Tune ${options.preset.title}").setView(panel)
             .setPositiveButton("Apply") { _, _ -> RecordingPresetSettings.save(context,options); refreshPresets() }
             .setNegativeButton("Cancel",null).show()
