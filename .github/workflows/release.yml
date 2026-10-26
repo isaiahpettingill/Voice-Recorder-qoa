@@ -1,17 +1,132 @@
-name: Release
+name: Build and release
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches: [ main ]
-    paths:
-      - ".fossify/release-marker.txt"
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recorder-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  call-release-workflow:
-    name: Release
-    uses: FossifyOrg/.github/.github/workflows/release.yml@main
-    with:
-      track: ${{ vars.GPLAY_TRACK || 'beta' }}
-      rollout: ${{ vars.GPLAY_ROLLOUT || '0.05' }}
-      validate_only: ${{ vars.GPLAY_DRY_RUN == 'true' }}
-    secrets: inherit
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify release tooling
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Test, lint and assemble without release credentials
+        run: ./gradlew --no-daemon :buildSrc:test testFossDebugUnitTest lintFossDebug assembleFossDebug assembleFossRelease
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-reports
+          path: |
+            app/build/reports
+            app/build/test-results
+
+  device-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable runner KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: ./gradlew --no-daemon connectedFossDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: device-test-reports
+          path: app/build/reports/androidTests
+
+  release:
+    needs: [checks, device-checks]
+    if: github.repository == 'isaiahpettingill/Voice-Recorder-qoa' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Plan version
+        id: version
+        run: python3 scripts/release.py plan --run-number "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.QOA_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.QOA_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.QOA_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.QOA_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || { echo 'Missing QOA signing secrets. See README.' >&2; exit 1; }
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/recorder-release.p12"
+          keytool -list -keystore "$RUNNER_TEMP/recorder-release.p12" -storepass:env STORE_PASSWORD -alias "$KEY_ALIAS" > /dev/null
+      - name: Build signed release
+        env:
+          SIGNING_STORE_FILE: ${{ runner.temp }}/recorder-release.p12
+          SIGNING_STORE_PASSWORD: ${{ secrets.QOA_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.QOA_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.QOA_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleFossRelease -PVERSION_NAME=${{ steps.version.outputs.version }} -PVERSION_CODE=${{ steps.version.outputs.code }}
+      - name: Verify signed APK
+        env:
+          EXPECTED_CODE: ${{ steps.version.outputs.code }}
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+          KEYSTORE: ${{ runner.temp }}/recorder-release.p12
+          STORE_PASSWORD: ${{ secrets.QOA_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.QOA_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find app/build/outputs/apk/foss/release -name '*.apk')
+          test "${#apks[@]}" = 1
+          mkdir release-assets
+          cp "${apks[0]}" "release-assets/voice-recorder-qoa-v${EXPECTED_VERSION}.apk"
+          python3 scripts/release.py verify "release-assets/voice-recorder-qoa-v${EXPECTED_VERSION}.apk" --code "$EXPECTED_CODE" --version "$EXPECTED_VERSION"
+          cd release-assets && sha256sum *.apk > SHA256SUMS
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release.py publish --tag "v${{ steps.version.outputs.version }}" --commit "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --assets release-assets
+      - name: Remove temporary key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/recorder-release.p12"

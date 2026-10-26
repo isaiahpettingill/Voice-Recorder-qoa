@@ -1,3 +1,6 @@
+import com.android.build.api.instrumentation.InstrumentationScope
+import com.android.build.api.instrumentation.FramesComputationMode
+import us.josemancharo.build.CommonsForkInstrumentation
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.FileInputStream
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -37,6 +40,7 @@ android {
         versionName = project.property("VERSION_NAME").toString()
         versionCode = project.property("VERSION_CODE").toString().toInt()
         vectorDrawables.useSupportLibrary = true
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -112,7 +116,7 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    namespace = "org.fossify.voicerecorder"
 
     lint {
         checkReleaseBuilds = false
@@ -137,6 +141,10 @@ detekt {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     implementation(libs.fossify.commons)
     implementation(libs.eventbus)
     implementation(libs.audiorecordview)
@@ -146,4 +154,14 @@ dependencies {
     implementation(libs.tandroidlame)
     implementation(libs.autofittextview)
     detektPlugins(libs.compose.detekt)
+}
+
+// Commons 7.1.3 assumes official org.fossify branding. This fork has its own ID.
+// Review the two-literal adapter before updating Commons; never broaden its scope.
+check(libs.versions.commons.get() == "7.1.3") { "Review Commons fork identity adapter before upgrading Commons" }
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.instrumentation.transformClassesWith(CommonsForkInstrumentation::class.java, InstrumentationScope.ALL) {}
+        variant.instrumentation.setAsmFramesComputationMode(FramesComputationMode.COPY_FRAMES)
+    }
 }

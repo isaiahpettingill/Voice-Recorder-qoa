@@ -42,6 +42,7 @@ import org.greenrobot.eventbus.ThreadMode
 class MainActivity : SimpleActivity() {
 
     private var bus: EventBus? = null
+    private var recoveryExport: String? = null
 
     override var isSearchBarEnabled = true
 
@@ -49,6 +50,7 @@ class MainActivity : SimpleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recoveryExport = savedInstanceState?.getString("recoveryExport")
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         appLaunched(BuildConfig.APPLICATION_ID)
@@ -153,12 +155,60 @@ class MainActivity : SimpleActivity() {
         binding.mainMenu.requireToolbar().setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.more_apps_from_us -> launchMoreAppsFromUsIntent()
+                R.id.recovered_recordings -> openRecovery()
+                R.id.import_sound -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/octet-stream"))
+                }, 42)
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
                 else -> return@setOnMenuItemClickListener false
             }
             return@setOnMenuItemClickListener true
         }
+    }
+
+    @Deprecated("Legacy activity result API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 43 && resultCode == Activity.RESULT_OK && data?.data != null) {
+            val source = recoveryExport?.let { java.io.File(it) }
+            recoveryExport = null
+            if (source != null && source.canonicalFile.parentFile == java.io.File(filesDir, "recording-recovery").canonicalFile) {
+                org.fossify.commons.helpers.ensureBackgroundThread {
+                    try {
+                        checkNotNull(contentResolver.openOutputStream(data.data!!, "w")).use { output -> source.inputStream().use { it.copyTo(output) } }
+                        runOnUiThread { toast("Recovered recording exported") }
+                    } catch (error: Exception) { runOnUiThread { toast(error.message ?: "Export failed; recovery retained") } }
+                }
+            }
+        }
+        if (requestCode == 42 && resultCode == Activity.RESULT_OK && data?.data != null) {
+            startActivity(Intent(this, EditSoundActivity::class.java).setData(data.data)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("recoveryExport", recoveryExport)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun openRecovery() {
+        val recovered = java.io.File(filesDir, "recording-recovery").listFiles()
+            ?.filter { it.extension == "qoa" && runCatching {
+                it.inputStream().use { stream -> org.fossify.voicerecorder.audio.QoaReader(stream).totalFrames > 0 }
+            }.getOrDefault(false) }?.sortedByDescending { it.lastModified() }.orEmpty()
+        if (recovered.isEmpty()) { toast("No recoverable recordings"); return }
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle(R.string.recovered_recordings)
+            .setItems(recovered.map { it.name }.toTypedArray()) { _, index ->
+                val file = recovered[index]
+                recoveryExport = file.absolutePath
+                startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "audio/x-qoa"; putExtra(Intent.EXTRA_TITLE, "Recovered-${file.name}")
+                }, 43)
+            }.setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun updateMenuColors() {

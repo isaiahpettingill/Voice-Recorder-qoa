@@ -9,5 +9,6 @@ on:
 
 jobs:
   update-commons:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/update-commons.yml@main
     secrets: inherit

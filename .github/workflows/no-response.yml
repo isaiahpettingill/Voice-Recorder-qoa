@@ -7,5 +7,6 @@ on:
 
 jobs:
   call-no-response-workflow:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/no-response.yml@main
     secrets: inherit

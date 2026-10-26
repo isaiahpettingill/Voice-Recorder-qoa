@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="AppCompatResource,AlwaysShowAction">
+    <item android:id="@+id/cab_edit_sound" android:title="@string/edit_sound" app:showAsAction="ifRoom" />
     <item
         android:id="@+id/cab_rename"
         android:icon="@drawable/ic_rename_vector"

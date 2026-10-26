@@ -6,5 +6,6 @@ on:
 
 jobs:
   call-pr-labeler-workflow:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/pr-labeler.yml@main
     secrets: inherit

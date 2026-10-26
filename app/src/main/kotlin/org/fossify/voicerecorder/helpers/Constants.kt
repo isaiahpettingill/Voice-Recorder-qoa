@@ -6,7 +6,7 @@ const val REPOSITORY_NAME = "Voice-Recorder"
 
 const val RECORDER_RUNNING_NOTIF_ID = 10000
 
-private const val PATH = "com.fossify.voicerecorder.action."
+private const val PATH = "us.josemancharo.voicerecorderqoa.action."
 const val GET_RECORDER_INFO = PATH + "GET_RECORDER_INFO"
 const val STOP_AMPLITUDE_UPDATE = PATH + "STOP_AMPLITUDE_UPDATE"
 const val TOGGLE_PAUSE = PATH + "TOGGLE_PAUSE"
@@ -15,6 +15,7 @@ const val CANCEL_RECORDING = PATH + "CANCEL_RECORDING"
 const val EXTENSION_M4A = 0
 const val EXTENSION_MP3 = 1
 const val EXTENSION_OGG = 2
+const val EXTENSION_QOA = 3
 
 val BITRATES_MP3 = arrayListOf(
     8000, 16000, 24000, 32000, 64000, 96000, 128000, 160000, 192000, 256000, 320000

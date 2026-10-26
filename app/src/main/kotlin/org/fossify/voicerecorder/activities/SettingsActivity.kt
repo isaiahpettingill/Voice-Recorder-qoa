@@ -35,6 +35,7 @@ import org.fossify.voicerecorder.helpers.DEFAULT_BITRATE
 import org.fossify.voicerecorder.helpers.DEFAULT_SAMPLING_RATE
 import org.fossify.voicerecorder.helpers.EXTENSION_M4A
 import org.fossify.voicerecorder.helpers.EXTENSION_MP3
+import org.fossify.voicerecorder.helpers.EXTENSION_QOA
 import org.fossify.voicerecorder.helpers.EXTENSION_OGG
 import org.fossify.voicerecorder.helpers.SAMPLING_RATES
 import org.fossify.voicerecorder.helpers.SAMPLING_RATE_BITRATE_LIMITS
@@ -181,6 +182,7 @@ class SettingsActivity : SimpleActivity() {
         binding.settingsExtension.text = config.getExtensionText()
         binding.settingsExtensionHolder.setOnClickListener {
             val items = arrayListOf(
+                RadioItem(EXTENSION_QOA, getString(R.string.qoa)),
                 RadioItem(EXTENSION_M4A, getString(R.string.m4a)),
                 RadioItem(EXTENSION_MP3, getString(R.string.mp3_experimental))
             )
@@ -199,6 +201,7 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun setupBitrate() {
+        binding.settingsBitrateHolder.beVisibleIf(config.extension != EXTENSION_QOA)
         binding.settingsBitrate.text = getBitrateText(config.bitrate)
         binding.settingsBitrateHolder.setOnClickListener {
             val items = BITRATES[config.extension]!!
@@ -217,6 +220,8 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun adjustBitrate() {
+        binding.settingsBitrateHolder.beVisibleIf(config.extension != EXTENSION_QOA)
+        if (config.extension == EXTENSION_QOA) return
         val availableBitrates = BITRATES[config.extension]!!
         if (!availableBitrates.contains(config.bitrate)) {
             val currentBitrate = config.bitrate
@@ -246,6 +251,7 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun getSamplingRatesArray(): ArrayList<Int> {
+        if (config.extension == EXTENSION_QOA) return arrayListOf(8000, 16000, 22050, 24000, 32000, 44100, 48000)
         val baseRates = SAMPLING_RATES[config.extension]!!
         val limits = SAMPLING_RATE_BITRATE_LIMITS[config.extension]!!
         val filteredRates = baseRates.filter {

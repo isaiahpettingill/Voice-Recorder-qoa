@@ -3,6 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="AlwaysShowAction">
+    <item android:id="@+id/recovered_recordings" android:title="@string/recovered_recordings" app:showAsAction="never" />
+    <item android:id="@+id/import_sound" android:title="@string/import_sound" app:showAsAction="never" />
     <item
         android:id="@+id/settings"
         android:icon="@drawable/ic_settings_cog_vector"

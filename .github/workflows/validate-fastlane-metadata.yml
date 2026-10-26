@@ -12,4 +12,5 @@ on:
 
 jobs:
   validate:
+    if: github.repository == 'FossifyOrg/Voice-Recorder'
     uses: FossifyOrg/.github/.github/workflows/validate-fastlane-metadata.yml@main
