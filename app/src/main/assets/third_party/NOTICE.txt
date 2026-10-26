@@ -20,3 +20,7 @@ setFormantScale, because R3 applies envelope correction before pitch resampling.
 Robot is an amplitude-modulation effect (Klarinet Tremolo at 40 Hz), not a vocoder.
 Radio is a band-limited filter; 80s is chorus/slapback delay. Presets are starting
 points, not claims to transform every speaker's perceived sex or identity.
+
+SpeexDSP 1.2.1 (Xiph.Org), BSD-3-Clause, commit
+1b28a0f61bc31162979e1f26f3981fc3637095c8.
+License: SpeexDSP.txt. Source: https://github.com/xiph/speexdsp

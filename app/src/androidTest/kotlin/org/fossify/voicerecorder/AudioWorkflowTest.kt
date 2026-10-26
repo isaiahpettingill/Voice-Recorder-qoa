@@ -12,6 +12,7 @@ import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import org.fossify.voicerecorder.activities.EditSoundActivity
 import org.fossify.voicerecorder.audio.*
 import org.fossify.voicerecorder.recorder.QoaRecorder
+import org.fossify.voicerecorder.recorder.RecordingPresetSettings
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -106,6 +107,9 @@ class AudioWorkflowTest {
 
     @Test fun microphonePauseResumeProducesPlayableQoa() = withForegroundMicrophone {
         val before = recoveries()
+        val previous = RecordingPresetSettings.load(context)
+        RecordingPresetSettings.save(context, EditOptions())
+        var processed: android.net.Uri? = null
         val target = File.createTempFile("mic-fixture", ".qoa", context.cacheDir)
         val recorder = QoaRecorder(context)
         try {
@@ -117,9 +121,17 @@ class AudioWorkflowTest {
             assertTrue(AudioFiles.isQoa(context, target.path))
             val audio = AudioFiles.readForEditing(context, target.path)
             assertTrue(audio.samples.isNotEmpty())
-            assertEquals("Successful save removes its recovery file", before, recoveries())
+            val original = target.readBytes()
+            assertTrue("Dry save retains settings until cleanup finishes", recoveries().size > before.size)
+            processed = recorder.renderPresetCopy(context.cacheDir.path)
+            assertNotNull(processed)
+            assertTrue(AudioFiles.isQoa(context, checkNotNull(processed).toString()))
+            assertArrayEquals("Cleanup does not alter original", original, target.readBytes())
+            assertEquals("Successful cleanup removes recovery files", before, recoveries())
         } finally {
             recorder.discard(); runCatching { recorder.release() }
+            RecordingPresetSettings.save(context, previous)
+            processed?.path?.let { File(it).delete() }
             target.delete(); (recoveries() - before).forEach { it.delete() }
         }
     }

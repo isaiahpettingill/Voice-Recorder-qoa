@@ -61,20 +61,30 @@ fun Context.recordingsDirectory(folder: String = config.saveRecordingsFolder): D
     } else null
 }.getOrNull()
 
-fun Context.createRecordingDocument(name: String, folder: String = config.saveRecordingsFolder): Uri? = runCatching {
+private val recordingDocumentLock = Any()
+
+fun Context.createRecordingDocument(name: String, folder: String = config.saveRecordingsFolder): Uri? = synchronized(recordingDocumentLock) { runCatching {
     require(name.isNotBlank() && name != "." && name != ".." && '/' !in name && '\\' !in name)
     val directory = recordingsDirectory(folder) ?: return@runCatching null
     if (!directory.canWrite()) return@runCatching null
     // Do not replace an existing recording. Providers can otherwise truncate or silently rename it.
     var candidate = name
     var suffix = 1
-    while (directory.findFile(candidate) != null) {
+    while (true) {
+        val occupied = directory.findFile(candidate) != null
+        if (!occupied) {
+            if (directory.uri.scheme == "file") {
+                // Atomic reservation also protects against another process creating this name.
+                val file = File(checkNotNull(directory.uri.path), candidate)
+                if (file.createNewFile()) return@runCatching Uri.fromFile(file)
+            } else break
+        }
         val stem = name.substringBeforeLast('.', name)
         val extension = name.substringAfterLast('.', "")
         candidate = "$stem (${suffix++})" + if (extension.isEmpty()) "" else ".$extension"
     }
     directory.createFile(if (name.endsWith(".qoa", true)) "audio/x-qoa" else name.getMimeType(), candidate)?.uri
-}.getOrNull()
+}.getOrNull() }
 
 fun Context.drawableToBitmap(drawable: Drawable): Bitmap {
     val size = (60 * resources.displayMetrics.density).toInt()

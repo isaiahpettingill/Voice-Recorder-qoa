@@ -12,6 +12,11 @@ class QoaCodecTest {
         val buffer=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
         return ShortArray(buffer.remaining()).also { buffer.get(it) }
     }
+    @Test fun encodedSilenceHasBoundedQuantizationNoise() {
+        val audio = PcmAudio(ShortArray(5120), 48000, 1)
+        val decoded = QoaCodec.decode(QoaCodec.encode(audio))
+        assertTrue(decoded.samples.all { kotlin.math.abs(it.toInt()) <= 4 })
+    }
     @Test fun officialReferenceEncodeAndDecodeAreByteExact() {
         for (name in listOf("mono","stereo","tiny","silence")) {
             val channels=if(name=="stereo" || name=="silence") 2 else 1

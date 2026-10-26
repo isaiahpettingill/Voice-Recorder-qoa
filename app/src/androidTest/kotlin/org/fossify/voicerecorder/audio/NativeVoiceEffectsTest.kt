@@ -16,21 +16,21 @@ class NativeVoiceEffectsTest {
     @Test fun pitchChangesFrequencyWithoutChangingDuration() {
         val input=tone()
         for ((semitones,expected) in listOf(-12.0 to 220.0,12.0 to 880.0)) {
-            val out=AudioEffects.process(input,EditOptions(pitchSemitones=semitones))
+            val out=AudioEffects.process(input,EditOptions(noiseReduction=false, pitchSemitones=semitones))
             assertTrue(abs(input.frames-out.frames)<160); assertEquals(expected,frequency(out),12.0)
         }
     }
     @Test fun tempoChangesDurationWithoutChangingPitch() {
         val input=tone()
         for(speed in listOf(0.5,2.0)) {
-            val out=AudioEffects.process(input,EditOptions(speed=speed))
+            val out=AudioEffects.process(input,EditOptions(noiseReduction=false, speed=speed))
             assertTrue(abs((input.frames/speed).roundToInt()-out.frames)<160); assertEquals(440.0,frequency(out),10.0)
         }
     }
     @Test fun stereoChannelsStayAlignedAndPresetsAreAudible() {
         val input=tone(channels=2)
         for(effect in VoicePreset.entries.filter { it!=VoicePreset.NONE }) {
-            val out=AudioEffects.process(input,effect.defaults())
+            val out=AudioEffects.process(input,effect.defaults().copy(noiseReduction=false))
             assertFalse(input.samples.contentEquals(out.samples))
             if (effect == VoicePreset.CAVE) {
                 // Freeverb intentionally decorrelates stereo with different delay lengths.
@@ -39,18 +39,18 @@ class NativeVoiceEffectsTest {
                 assertTrue((0 until out.frames).any { out.samples[it*2+1].toInt() != 0 })
             } else for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
         }
-        val out=AudioEffects.process(input,EditOptions(speed=1.5,pitchSemitones=5.0))
+        val out=AudioEffects.process(input,EditOptions(noiseReduction=false, speed=1.5,pitchSemitones=5.0))
         for(i in 0 until out.frames) assertEquals(out.samples[i*2],out.samples[i*2+1])
     }
     @Test fun formantAndMixControlsRemainFiniteAndPreserveSource() {
         val input=tone(channels=2); val before=input.samples.copyOf()
         for (formant in listOf(-6.0, 0.0, 6.0)) {
-            val output=AudioEffects.process(input, EditOptions(pitchSemitones=4.5, formantSemitones=formant))
+            val output=AudioEffects.process(input, EditOptions(noiseReduction=false, pitchSemitones=4.5, formantSemitones=formant))
             assertTrue(output.samples.any { it.toInt()!=0 })
             assertTrue(abs(output.frames-input.frames)<160)
         }
         assertArrayEquals(before,input.samples)
-        val bypass=AudioEffects.process(input, EditOptions(preset=VoicePreset.EIGHTIES, effectMix=0.0))
+        val bypass=AudioEffects.process(input, EditOptions(noiseReduction=false, preset=VoicePreset.EIGHTIES, effectMix=0.0))
         assertArrayEquals(before,bypass.samples)
     }
 }

@@ -18,7 +18,8 @@ class BackgroundRecordActivity : SimpleActivity() {
                     Intent(this@BackgroundRecordActivity, RecorderService::class.java).apply {
                         try {
                             if (RecorderService.isRunning) {
-                                stopService(this)
+                                action = org.fossify.voicerecorder.helpers.SAVE_RECORDING
+                                startService(this)
                             } else {
                                 startService(this)
                             }

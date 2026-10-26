@@ -9,3 +9,6 @@
 
 # JNI entry point used by the offline library-backed voice renderer.
 -keep class org.fossify.voicerecorder.audio.NativeVoiceProcessor { *; }
+
+# SpeexDSP JNI session entry points.
+-keep class org.fossify.voicerecorder.audio.NativeNoiseReducer { *; }

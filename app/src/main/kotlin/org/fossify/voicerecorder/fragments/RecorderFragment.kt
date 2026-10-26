@@ -6,6 +6,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.SeekBar
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import androidx.core.widget.doAfterTextChanged
 import java.io.File
 import org.fossify.voicerecorder.audio.VoicePreset
 import org.fossify.voicerecorder.recorder.RecordingPresetSettings
@@ -63,12 +66,34 @@ class RecorderFragment(
     override fun onFinishInflate() {
         super.onFinishInflate()
         binding = FragmentRecorderBinding.bind(this)
+        binding.recordingName.setText(RecordingPresetSettings.recordingName(context))
+        binding.recordingName.doAfterTextChanged {
+            RecordingPresetSettings.setRecordingName(context, it?.toString().orEmpty())
+        }
+        binding.recordingName.setOnEditorActionListener { view, action, _ ->
+            if (action == EditorInfo.IME_ACTION_DONE) {
+                view.clearFocus()
+                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(view.windowToken, 0)
+                true
+            } else false
+        }
+        binding.recordingNoiseReduction.setOnCheckedChangeListener { _, enabled ->
+            val options = RecordingPresetSettings.load(context)
+            if (options.noiseReduction != enabled) {
+                RecordingPresetSettings.save(context, options.copy(noiseReduction = enabled))
+            }
+        }
         binding.recordingPreset.setOnClickListener { choosePreset() }
         binding.recordingTune.setOnClickListener { tunePreset() }
         binding.recordingPendingEffects.setOnClickListener { retryPendingEffects() }
     }
 
     override fun onResume() {
+        if (!binding.recordingName.hasFocus()) {
+            val name = RecordingPresetSettings.recordingName(context)
+            if (binding.recordingName.text.toString() != name) binding.recordingName.setText(name)
+        }
         setupColors()
         if (!RecorderService.isRunning) {
             status = RECORDING_STOPPED
@@ -149,7 +174,10 @@ class RecorderFragment(
         binding.recordingPreset.text = options.preset.title
         binding.recordingPreset.isEnabled = supported
         binding.recordingTune.isEnabled = supported
-        binding.recordingEffectsStatus.text = if (supported) "Effects saved after recording · Original kept" else "Switch recording format to QOA to use presets"
+        binding.recordingName.isEnabled = supported
+        binding.recordingNoiseReduction.isEnabled = supported
+        binding.recordingNoiseReduction.isChecked = options.noiseReduction
+        binding.recordingEffectsStatus.text = if (supported) "Effects saved after recording · Original kept" else "Switch to QOA to name recordings and use noise reduction or presets"
         binding.recordingEffectsStatus.setTextColor(context.getProperTextColor())
         binding.recordingPendingEffects.visibility = if (!RecorderService.isRunning && pendingEffects().isNotEmpty()) View.VISIBLE else View.GONE
     }
@@ -159,7 +187,7 @@ class RecorderFragment(
             val presets = VoicePreset.entries.filter { if (category == 0) !it.isSoundEffect else it.isSoundEffect }
             AlertDialog.Builder(context).setTitle(if (category == 0) "Voice" else "Sound FX")
                 .setItems(presets.map { it.title }.toTypedArray()) { _, index ->
-                    RecordingPresetSettings.save(context, presets[index].defaults()); refreshPresets()
+                    RecordingPresetSettings.save(context, presets[index].defaults().copy(noiseReduction = RecordingPresetSettings.load(context).noiseReduction)); refreshPresets()
                 }.setNegativeButton("Cancel", null).show()
         }.setNegativeButton("Cancel", null).show()
     }
@@ -276,7 +304,8 @@ class RecorderFragment(
     private fun saveRecording() {
         status = RECORDING_STOPPED
         Intent(context, RecorderService::class.java).apply {
-            context.stopService(this)
+            action = org.fossify.voicerecorder.helpers.SAVE_RECORDING
+            context.startService(this)
         }
         refreshView()
     }

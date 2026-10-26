@@ -20,3 +20,15 @@ setFormantScale, because R3 applies envelope correction before pitch resampling.
 Robot is an amplitude-modulation effect (Klarinet Tremolo at 40 Hz), not a vocoder.
 Radio is a band-limited filter; 80s is chorus/slapback delay. Presets are starting
 points, not claims to transform every speaker's perceived sex or identity.
+
+* SpeexDSP 1.2.1: https://github.com/xiph/speexdsp
+  commit `1b28a0f61bc31162979e1f26f3981fc3637095c8` (SpeexDSP-1.2.1).
+  Unmodified include/libspeexdsp directories and COPYING; only generated
+  include/speex/speexdsp_config_types.h is supplied for stdint Android/host types.
+  BSD-3-Clause. Floating point preprocessor with upstream Kiss FFT, no downloaded
+  weights. Spectral speech noise reduction at -20 dB maximum suppression;
+  AGC, VAD and dereverb disabled. Each channel has its own ~20 ms state; no
+  resampling, tempo/pitch change, microphone permission or network requirement.
+  Our adapter compensates one analysis-frame delay and pads/drains the final
+  partial frame, preserving the exact sample count and channel ordering.
+  This reduces steady background noise, not all background sounds or voices.
