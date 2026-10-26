@@ -108,7 +108,7 @@ jobs:
           script: >-
             result=0; ./gradlew --no-daemon connectedFossDebugAndroidTest || result=$?;
             mkdir -p device-screenshots;
-            adb pull /sdcard/Android/data/us.josemancharo.voicerecorderqoa.debug/files/screenshots/. device-screenshots/ || true;
+            adb pull /sdcard/Pictures/recorder-ci/. device-screenshots/ || true;
             exit "$result"
       - uses: actions/upload-artifact@v4
         if: always()

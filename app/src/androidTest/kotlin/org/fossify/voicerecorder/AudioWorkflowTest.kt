@@ -151,8 +151,10 @@ class AudioWorkflowTest {
             val failure = runCatching { recorder.release() }.exceptionOrNull()
             assertNotNull("Final output failure must be reported", failure)
             val retained = recoveries() - before
-            assertEquals("The sole captured copy must survive", 1, retained.size)
-            val recovered = retained.single().inputStream().use { QoaCodec.read(it) }
+            val audio = retained.filter { it.extension == "qoa" }
+            assertEquals("The sole captured audio copy must survive", 1, audio.size)
+            assertTrue("Preset journal survives alongside audio", File(audio.single().path + ".presets.json").isFile)
+            val recovered = audio.single().inputStream().use { QoaCodec.read(it) }
             assertTrue("Recovery contains valid recorded samples", recovered.samples.isNotEmpty())
         } finally {
             recorder.discard(); runCatching { recorder.release() }
