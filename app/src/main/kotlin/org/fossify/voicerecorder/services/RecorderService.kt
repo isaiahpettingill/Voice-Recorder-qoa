@@ -32,7 +32,7 @@ import org.fossify.voicerecorder.extensions.updateWidgets
 import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
 import org.fossify.voicerecorder.helpers.EXTENSION_QOA
 import org.fossify.voicerecorder.recorder.QoaRecorder
-import org.fossify.voicerecorder.extensions.createDocumentFile
+import org.fossify.voicerecorder.extensions.createRecordingDocument
 import org.fossify.voicerecorder.helpers.EXTENSION_MP3
 import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
 import org.fossify.voicerecorder.helpers.RECORDER_RUNNING_NOTIF_ID
@@ -99,13 +99,9 @@ class RecorderService : Service() {
             return
         }
 
-        val defaultFolder = File(config.saveRecordingsFolder)
-        if (!defaultFolder.exists()) {
-            defaultFolder.mkdir()
-        }
-
-        val recordingFolder = defaultFolder.absolutePath
-        recordingPath = "$recordingFolder/${getFormattedFilename()}.${config.getExtension()}"
+        val name = "${getFormattedFilename()}.${config.getExtension()}"
+        val usesDocuments = config.saveRecordingsFolder.startsWith("content://") || isRPlus()
+        recordingPath = if (usesDocuments) name else File(config.saveRecordingsFolder, name).absolutePath
         resultUri = null
 
         try {
@@ -117,8 +113,8 @@ class RecorderService : Service() {
                 MediaRecorderWrapper(this)
             }
 
-            if (isRPlus()) {
-                val fileUri = checkNotNull(createDocumentFile(recordingPath)) { "Could not create recording." }
+            if (usesDocuments) {
+                val fileUri = checkNotNull(createRecordingDocument(name)) { "Could not create recording." }
                 resultUri = fileUri
                 contentResolver.openFileDescriptor(fileUri, "w")!!
                     .use { recorder?.setOutputFile(it) }
@@ -168,7 +164,7 @@ class RecorderService : Service() {
         recorder = null // One finalizer; onDestroy and repeated Stop cannot finalize twice.
         val completedPath = recordingPath
         val completedUri = resultUri
-        val documentOutput = isRPlus() || isPathOnSD(completedPath)
+        val documentOutput = completedUri?.scheme == "content" && completedUri.authority != "${BuildConfig.APPLICATION_ID}.provider"
         if (cancel && active is QoaRecorder) active.discard()
         ensureBackgroundThread {
             var failure: Exception? = null
@@ -182,7 +178,7 @@ class RecorderService : Service() {
             if (cancel || failure != null) {
                 try {
                     if (documentOutput && completedUri != null) DocumentsContract.deleteDocument(contentResolver, completedUri)
-                    else File(completedPath).delete()
+                    else File(completedUri?.takeIf { it.scheme == "file" }?.path ?: completedPath).delete()
                 } catch (error: Exception) { showErrorToast(error) }
                 if (!cancel) failure?.let { showErrorToast(it) }
             } else {
@@ -223,7 +219,7 @@ class RecorderService : Service() {
     }
 
     private fun scanRecording(recordingPath: String, resultUri: Uri?) {
-        if (recordingPath.endsWith(".qoa", true)) {
+        if (recordingPath.endsWith(".qoa", true) || (resultUri?.scheme == "content" && resultUri.authority != "${BuildConfig.APPLICATION_ID}.provider")) {
             resultUri?.let { recordingSavedSuccessfully(it) }
             return
         }
