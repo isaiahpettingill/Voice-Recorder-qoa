@@ -8,6 +8,7 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.matcher.ViewMatchers.withText
+import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import org.fossify.voicerecorder.activities.EditSoundActivity
 import org.fossify.voicerecorder.audio.*
 import org.fossify.voicerecorder.recorder.QoaRecorder
@@ -59,11 +60,12 @@ class AudioWorkflowTest {
                     if (!loaded) Thread.sleep(50)
                 }
                 assertTrue("Audio loads into editor", loaded)
-                onView(withText("Preview")).perform(scrollTo(), click())
+                onView(withText("Preview")).perform(click())
                 Thread.sleep(300)
-                onView(withText("Stop preview")).perform(scrollTo(), click())
-                onView(withText("Reset")).perform(scrollTo(), click())
-                onView(withText("Close")).perform(scrollTo(), click())
+                onView(withText("Stop preview")).perform(click())
+                onView(withContentDescription("More editing options")).perform(click())
+                onView(withText("Reset")).perform(click())
+                onView(withText("Back")).perform(click())
             }
             assertArrayEquals(bytes, qoa.readBytes())
         } finally { qoa.delete() }

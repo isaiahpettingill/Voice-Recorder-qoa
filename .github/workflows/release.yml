@@ -105,12 +105,22 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: true
-          script: ./gradlew --no-daemon connectedFossDebugAndroidTest
+          script: >-
+            result=0; ./gradlew --no-daemon connectedFossDebugAndroidTest || result=$?;
+            mkdir -p device-screenshots;
+            adb pull /sdcard/Android/data/us.josemancharo.voicerecorderqoa.debug/files/screenshots/. device-screenshots/ || true;
+            exit "$result"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: device-test-reports
           path: app/build/reports/androidTests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: device-ui-screenshots
+          path: device-screenshots
+          if-no-files-found: warn
 
   release:
     needs: [plan, checks, device-checks]

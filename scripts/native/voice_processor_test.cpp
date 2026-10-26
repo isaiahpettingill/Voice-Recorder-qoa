@@ -36,7 +36,24 @@ int main() {
     double upPeak=peak(up,rate,500,2000,100), downPeak=peak(down,rate,400,1400,100), keepPeak=peak(preserved,rate,600,2200,200);
     std::cout<<"formant peaks up="<<upPeak<<" down="<<downPeak<<" preserved="<<keepPeak<<"\n";
     assert(upPeak>=1200 && downPeak<=900 && keepPeak<=1400);
-    for(int effect=1;effect<=3;++effect){ assert(voice::process(sine,rate,1,0,0,1,effect,0)==sine); auto wet=voice::process(sine,rate,1,0,0,1,effect,1); assert(wet.size()==sine.size() && wet!=sine); }
+    for(int effect=1;effect<=8;++effect){ assert(voice::process(sine,rate,1,0,0,1,effect,0)==sine); auto wet=voice::process(sine,rate,1,0,0,1,effect,1); assert(wet.size()==sine.size() && wet!=sine); }
+    // Creative effects are upstream algorithms: zero mix is exact bypass, silence
+    // stays silent, and state never leaks between stereo channels.
+    std::vector<int16_t> silence(rate * 2, 0), stereo(rate * 2, 0);
+    for (int i=0; i<rate; ++i) stereo[i*2]=sine[i];
+    for (int effect=4; effect<=8; ++effect) {
+        assert(voice::process(silence,rate,2,0,0,1,effect,1)==silence);
+        auto wet=voice::process(stereo,rate,2,0,0,1,effect,.5);
+        assert(wet.size()==stereo.size() && wet!=stereo);
+        // Reverb deliberately spreads stereo; other effects retain channel isolation.
+        if (effect!=5) for(size_t i=1;i<wet.size();i+=2) assert(wet[i]==0);
+    }
+    std::vector<int16_t> impulse(rate,0); impulse[0]=16000;
+    auto echo=voice::process(impulse,rate,1,0,0,1,4,1);
+    assert(std::abs(echo[rate*280/1000+1])>1000); // configured 280 ms delay
+    auto cave=voice::process(impulse,rate,1,0,0,1,5,1);
+    long long tail=0; for(size_t i=rate/20;i<cave.size();++i) tail+=std::abs(cave[i]);
+    assert(tail>1000); // real reverb decay rather than a gain-only placeholder
     bool rejected=false; try { voice::process(sine,rate,1,13,0,1,0,0); } catch(const std::invalid_argument&){rejected=true;} assert(rejected);
     bool canceled=false; try { voice::process(sine,rate,1,3,2,1,0,0,[]{return true;}); } catch(const std::runtime_error&){canceled=true;} assert(canceled);
     std::cout<<"Native library-backed voice tests passed\n";

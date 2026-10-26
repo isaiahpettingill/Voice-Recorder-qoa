@@ -1,6 +1,15 @@
 package org.fossify.voicerecorder.fragments
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.SeekBar
+import android.view.View
+import java.io.File
+import org.fossify.voicerecorder.audio.VoicePreset
+import org.fossify.voicerecorder.recorder.RecordingPresetSettings
+import org.fossify.voicerecorder.recorder.RecordingAutomation
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Drawable
@@ -53,6 +62,9 @@ class RecorderFragment(
     override fun onFinishInflate() {
         super.onFinishInflate()
         binding = FragmentRecorderBinding.bind(this)
+        binding.recordingPreset.setOnClickListener { choosePreset() }
+        binding.recordingTune.setOnClickListener { tunePreset() }
+        binding.recordingPendingEffects.setOnClickListener { retryPendingEffects() }
     }
 
     override fun onResume() {
@@ -112,6 +124,7 @@ class RecorderFragment(
     }
 
     private fun setupColors() {
+        refreshPresets()
         val properTextColor = context.getProperTextColor()
         val properPrimaryColor = context.getProperPrimaryColor()
         binding.toggleRecordingButton.apply {
@@ -123,6 +136,76 @@ class RecorderFragment(
         binding.saveRecordingButton.applyColorFilter(properTextColor)
         binding.recorderVisualizer.chunkColor = properPrimaryColor
         binding.recordingDuration.setTextColor(properTextColor)
+    }
+
+    private fun pendingEffects() = File(context.filesDir, "recording-recovery").listFiles()
+        ?.filter { it.name.endsWith(".qoa.presets.json") } ?: emptyList()
+
+    private fun refreshPresets() {
+        val options = RecordingPresetSettings.load(context)
+        val supported = context.config.extension == org.fossify.voicerecorder.helpers.EXTENSION_QOA
+        binding.recordingPreset.text = options.preset.title
+        binding.recordingPreset.isEnabled = supported
+        binding.recordingTune.isEnabled = supported
+        binding.recordingEffectsStatus.text = if (supported) "Effects saved after recording · Original kept" else "Switch recording format to QOA to use presets"
+        binding.recordingEffectsStatus.setTextColor(context.getProperTextColor())
+        binding.recordingPendingEffects.visibility = if (!RecorderService.isRunning && pendingEffects().isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun choosePreset() {
+        AlertDialog.Builder(context).setTitle("Presets").setItems(arrayOf("Voice", "Sound FX")) { _, category ->
+            val presets = VoicePreset.entries.filter { if (category == 0) !it.isSoundEffect else it.isSoundEffect }
+            AlertDialog.Builder(context).setTitle(if (category == 0) "Voice" else "Sound FX")
+                .setItems(presets.map { it.title }.toTypedArray()) { _, index ->
+                    RecordingPresetSettings.save(context, presets[index].defaults()); refreshPresets()
+                }.setNegativeButton("Cancel", null).show()
+        }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun tunePreset() {
+        var options = RecordingPresetSettings.load(context)
+        val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 8, 32, 8) }
+        fun slider(title: String, value: Double, min: Double, max: Double, change: (Double) -> Unit) {
+            val label = TextView(context)
+            fun labelValue(v: Double) { label.text = "%s: %.2f".format(title,v) }
+            labelValue(value); panel.addView(label)
+            panel.addView(SeekBar(context).apply {
+                this.max = 100; progress = ((value-min)/(max-min)*100).toInt()
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) { if (fromUser) { val v=min+(max-min)*progress/100; labelValue(v); change(v) } }
+                    override fun onStartTrackingTouch(bar: SeekBar?) {}
+                    override fun onStopTrackingTouch(bar: SeekBar?) {}
+                })
+            })
+        }
+        slider("Pitch",options.pitchSemitones,-12.0,12.0) { options=options.copy(pitchSemitones=it) }
+        slider("Formants",options.formantSemitones,-12.0,12.0) { options=options.copy(formantSemitones=it) }
+        slider("Speed",options.speed,.5,2.0) { options=options.copy(speed=it) }
+        if(options.preset.effect != 0) slider("Effect mix",options.effectMix,0.0,1.0) { options=options.copy(effectMix=it) }
+        AlertDialog.Builder(context).setTitle("Tune ${options.preset.title}").setView(panel)
+            .setPositiveButton("Apply") { _, _ -> RecordingPresetSettings.save(context,options); refreshPresets() }
+            .setNegativeButton("Cancel",null).show()
+    }
+
+    private fun retryPendingEffects() {
+        if (RecorderService.isRunning) return
+        val journals = pendingEffects()
+        val folder = context.config.saveRecordingsFolder
+        binding.recordingPendingEffects.isEnabled = false
+        Thread {
+            var failed = false
+            journals.forEach { journal ->
+                try {
+                    RecordingAutomation.restore(File(journal.path.removeSuffix(".presets.json"))).render(context,folder)?.let {
+                        EventBus.getDefault().post(Events.RecordingSaved(it))
+                    }
+                } catch (_: Exception) { failed = true }
+            }
+            post {
+                binding.recordingPendingEffects.isEnabled = true; refreshPresets()
+                context.toast(if(failed) "Some effects remain pending. Originals are kept; clips over the editing limit cannot be rendered." else "Effects copies saved")
+            }
+        }.start()
     }
 
     private fun updateRecordingDuration(duration: Int) {
@@ -209,6 +292,7 @@ class RecorderFragment(
 
     @SuppressLint("DiscouragedApi")
     private fun refreshView() {
+        refreshPresets()
         binding.toggleRecordingButton.setImageDrawable(getToggleButtonIcon())
         binding.saveRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
         binding.cancelRecordingButton.beVisibleIf(status != RECORDING_STOPPED)
@@ -234,6 +318,10 @@ class RecorderFragment(
             }
         }
     }
+
+    @Suppress("unused")
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun gotCompletedEvent(event: Events.RecordingCompleted) { refreshPresets() }
 
     @Suppress("unused")
     @Subscribe(threadMode = ThreadMode.MAIN)

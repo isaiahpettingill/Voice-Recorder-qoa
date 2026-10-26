@@ -1,4 +1,5 @@
 package org.fossify.voicerecorder.activities
+import org.fossify.voicerecorder.R
 
 import android.content.Intent
 import android.media.MediaPlayer
@@ -38,6 +39,12 @@ class EditSoundActivity : SimpleActivity() {
     private lateinit var preset: Spinner
     private lateinit var trimStart: EditText
     private lateinit var trimEnd: EditText
+    private lateinit var previewButton: Button
+    private lateinit var tuning: LinearLayout
+    private lateinit var trimSection: LinearLayout
+    private lateinit var category: RadioGroup
+    private var selectedPreset = VoicePreset.NONE
+    private var visiblePresets = VoicePreset.entries.toList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,54 +63,72 @@ class EditSoundActivity : SimpleActivity() {
         scroll.addView(controls)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
-        controls.addView(TextView(this).apply { text = "Edit sound"; textSize = 24f })
-        status = TextView(this).apply { text = "Opening audio…"; textSize = 16f }
+        val header = LinearLayout(this)
+        header.addView(Button(this).apply { text = "Back"; minHeight = dp(48); setOnClickListener { finish() } })
+        header.addView(TextView(this).apply { text = "Edit sound"; textSize = 24f }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(Button(this).apply {
+            text = "⋮"; minWidth = dp(48); minimumWidth = dp(48); contentDescription = "More editing options"; minHeight = dp(48)
+            setOnClickListener { showMore(this) }
+        })
+        controls.addView(header)
+        controls.addView(TextView(this).apply { text = intent.getStringExtra("title") ?: "Audio"; textSize = 18f })
+        status = TextView(this).apply { text = "Opening audio…"; textSize = 14f; accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE }
         controls.addView(status)
+        category = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        listOf("Voice", "Sound FX").forEachIndexed { index, title ->
+            category.addView(RadioButton(this).apply { id = if (index == 0) R.id.editor_voice_category else R.id.editor_sound_fx_category; text = title; minHeight = dp(48) })
+        }
+        controls.addView(category)
+        preset = Spinner(this).apply { contentDescription = "Voice preset"; minimumHeight = dp(48) }
+        controls.addView(preset)
+        tuning = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = android.view.View.GONE }
+        button("Tune preset") { tuning.visibility = if (tuning.visibility == android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE }
+        controls.addView(tuning)
+        val page = controls
+        controls = tuning
         gain = slider("Volume", 48, 24) { "${it - 24} dB" }
         normalize = CheckBox(this).apply {
-            text = "Normalize (−1 dB before volume)"
+            text = "Normalize"; minHeight = dp(48)
             setOnCheckedChangeListener { _, _ -> stopPreview() }
         }
         controls.addView(normalize)
         pitch = slider("Pitch", 48, 24) { String.format(java.util.Locale.ROOT, "%+.1f semitones", (it - 24) / 2.0) }
         formant = slider("Voice resonance (formants)", 48, 24) { String.format(java.util.Locale.ROOT, "%+.1f semitones", (it - 24) / 2.0) }
         speed = slider("Speed", 150, 50) { String.format(java.util.Locale.ROOT, "%.2f×", (it + 50) / 100.0) }
-        controls.addView(TextView(this).apply { text = "Voice effect"; textSize = 18f })
-        preset = Spinner(this).apply {
-            contentDescription = "Voice preset"
-            minimumHeight = dp(48)
-            adapter = ArrayAdapter(this@EditSoundActivity, android.R.layout.simple_spinner_dropdown_item,
-                VoicePreset.entries.map { it.title })
-        }
-        controls.addView(preset)
         effectMix = slider("Effect mix", 100, 0) { "$it%" }
         effectMix.isEnabled = false
+        button("Reset voice preset") { applyPreset(selectedPreset) }
+        controls = page
+        trimSection = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = android.view.View.GONE }
+        trimStart = numberField("Start (seconds)", "0")
+        trimEnd = numberField("End (seconds)", "")
+        trimSection.addView(trimStart, LinearLayout.LayoutParams(-1, dp(64)))
+        trimSection.addView(trimEnd, LinearLayout.LayoutParams(-1, dp(64)))
+        button("Trim") { trimSection.visibility = if (trimSection.visibility == android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE }
+        controls.addView(trimSection)
+        previewButton = Button(this).apply {
+            text = "Preview"; minHeight = dp(48)
+            setOnClickListener { if (renderingPreview || preview != null) stopPreview() else render(save = false) }
+        }
+        root.addView(previewButton)
+        root.addView(Button(this).apply {
+            text = "Save QOA copy"; minHeight = dp(48)
+            setOnClickListener { ensureStoragePermission { granted -> if (granted) render(save = true) } }
+        })
+        selectedPreset = savedInstanceState?.getString("presetName")?.let { name -> VoicePreset.entries.find { it.name == name } }
+            ?: VoicePreset.entries[(savedInstanceState?.getInt("preset", 0) ?: 0).coerceIn(0, VoicePreset.entries.lastIndex)]
+        category.check(if (selectedPreset.isSoundEffect) R.id.editor_sound_fx_category else R.id.editor_voice_category)
+        populatePresets(selectedPreset.isSoundEffect)
+        category.setOnCheckedChangeListener { _, id -> populatePresets(id == R.id.editor_sound_fx_category) }
         preset.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                if (position != lastPreset) { lastPreset = position; applyPreset(VoicePreset.entries[position]) }
+                val value = visiblePresets.getOrNull(position) ?: return
+                if (selectedPreset != value) { selectedPreset = value; applyPreset(value) }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        button("Reset voice preset") { applyPreset(VoicePreset.entries[preset.selectedItemPosition]) }
-        controls.addView(TextView(this).apply {
-            text = "Presets are starting points. Tune pitch and resonance for your voice; no voice identity is guaranteed. Effects use Rubber Band and Klarinet."
-        })
-        val trim = LinearLayout(this)
-        trimStart = numberField("Start (seconds)", "0")
-        trimEnd = numberField("End (seconds)", "")
-        trim.addView(trimStart, LinearLayout.LayoutParams(0, dp(64), 1f))
-        trim.addView(trimEnd, LinearLayout.LayoutParams(0, dp(64), 1f))
-        controls.addView(trim)
-        button("Preview") { render(save = false) }
-        button("Stop preview") { stopPreview() }
-        button("Save QOA copy") { ensureStoragePermission { granted -> if (granted) render(save = true) } }
-        button("Export WAV…") { render(save = false, export = true) }
-        button("Reset") { stopPreview(); gain.progress = 24; pitch.progress = 24; formant.progress = 24; effectMix.progress = 0; speed.progress = 50; normalize.isChecked = false; preset.setSelection(0); trimStart.setText("0"); trimEnd.setText("") }
-        button("Close") { finish() }
         savedInstanceState?.let {
-            lastPreset = it.getInt("preset", 0).coerceIn(0, VoicePreset.entries.lastIndex)
-            preset.setSelection(lastPreset)
-            effectMix.isEnabled = VoicePreset.entries[lastPreset].effect != 0
+            effectMix.isEnabled = selectedPreset.effect != 0
             pitch.progress = it.getInt("pitch", 24)
             formant.progress = it.getInt("formant", 24)
             speed.progress = it.getInt("speed", 50)
@@ -112,6 +137,8 @@ class EditSoundActivity : SimpleActivity() {
             normalize.isChecked = it.getBoolean("normalize", false)
             trimStart.setText(it.getString("trimStart", "0"))
             trimEnd.setText(it.getString("trimEnd", ""))
+            tuning.visibility = if (it.getBoolean("tuningOpen")) android.view.View.VISIBLE else android.view.View.GONE
+            trimSection.visibility = if (it.getBoolean("trimOpen")) android.view.View.VISIBLE else android.view.View.GONE
         }
         val path = intent.getStringExtra("path") ?: intent.data?.toString()
         if (path == null) { finish(); return }
@@ -127,7 +154,30 @@ class EditSoundActivity : SimpleActivity() {
             } catch (error: Exception) { showFailure(error) }
         }
     }
-    private var lastPreset = 0
+    private fun populatePresets(soundEffects: Boolean) {
+        visiblePresets = VoicePreset.entries.filter { it.isSoundEffect == soundEffects }
+        preset.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, visiblePresets.map { it.title })
+        val index = visiblePresets.indexOf(selectedPreset)
+        if (index >= 0) preset.setSelection(index)
+        else { selectedPreset = visiblePresets.first(); preset.setSelection(0); applyPreset(selectedPreset) }
+    }
+    private fun resetEdits() {
+        stopPreview(); selectedPreset = VoicePreset.NONE; category.check(R.id.editor_voice_category); populatePresets(false)
+        applyPreset(selectedPreset); gain.progress = 24; normalize.isChecked = false
+        trimStart.setText("0"); trimEnd.setText("")
+    }
+    private fun showMore(anchor: android.view.View) {
+        PopupMenu(this, anchor).apply {
+            menu.add("Export WAV…").setOnMenuItemClickListener { render(save = false, export = true); true }
+            menu.add("Reset").setOnMenuItemClickListener { resetEdits(); true }
+            menu.add("Help").setOnMenuItemClickListener {
+                android.app.AlertDialog.Builder(this@EditSoundActivity).setTitle("Editing")
+                    .setMessage("Edits always create a copy. Tune presets for your voice. Normalization targets −1 dB before volume. Effects use Rubber Band and Klarinet; presets do not guarantee a voice identity.")
+                    .setPositiveButton("OK", null).show(); true
+            }
+            show()
+        }
+    }
     private fun applyPreset(value: VoicePreset) {
         stopPreview()
         pitch.progress = (value.pitch * 2 + 24).toInt()
@@ -140,6 +190,11 @@ class EditSoundActivity : SimpleActivity() {
     private fun numberField(hintText: String, value: String) = EditText(this).apply {
         hint = hintText; setText(value); inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         contentDescription = hintText; setSingleLine()
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { stopPreview() }
+            override fun afterTextChanged(s: android.text.Editable?) = Unit
+        })
     }
     private fun slider(title: String, maximum: Int, initial: Int, display: (Int) -> String): SeekBar {
         val label = TextView(this).apply { textSize = 18f }
@@ -168,7 +223,7 @@ class EditSoundActivity : SimpleActivity() {
         return EditOptions(gainDb = (gain.progress - 24).toDouble(), normalize = normalize.isChecked,
             pitchSemitones = (pitch.progress - 24) / 2.0, formantSemitones = (formant.progress - 24) / 2.0,
             effectMix = effectMix.progress / 100.0, speed = (speed.progress + 50) / 100.0,
-            preset = VoicePreset.entries[preset.selectedItemPosition], trimStartMs = (start * 1000).toInt(), trimEndMs = end?.let { (it * 1000).toInt() })
+            preset = selectedPreset, trimStartMs = (start * 1000).toInt(), trimEndMs = end?.let { (it * 1000).toInt() })
     }
     private fun render(save: Boolean, export: Boolean = false) {
         if (busy) return
@@ -177,6 +232,7 @@ class EditSoundActivity : SimpleActivity() {
         stopPreview()
         busy = true
         renderingPreview = !save && !export
+        previewButton.text = if (renderingPreview) "Stop preview" else "Preview"
         status.text = if (save) "Saving copy…" else "Rendering…"
         val ticket = ++generation
         job = executor.submit {
@@ -216,6 +272,7 @@ class EditSoundActivity : SimpleActivity() {
                             status.text = "Choose where to export."
                         } else {
                             previewFile = ready
+                            previewButton.text = "Stop preview"
                             try {
                                 preview = MediaPlayer().apply {
                                     setDataSource(ready.absolutePath)
@@ -233,6 +290,7 @@ class EditSoundActivity : SimpleActivity() {
                 runOnUiThread {
                     if (ticket == generation && !isDestroyed && !isFinishing) {
                         busy = false; renderingPreview = false
+                        previewButton.text = "Preview"
                         status.text = if (error is InterruptedException) "Canceled" else error.message ?: "Could not process audio."
                     }
                 }
@@ -258,13 +316,16 @@ class EditSoundActivity : SimpleActivity() {
         if (!isDestroyed && !isFinishing) { busy = false; status.text = error.message ?: "Could not process audio." }
     } }
     private fun stopPreview() {
+        if (::previewButton.isInitialized) previewButton.text = "Preview"
         if (renderingPreview) { generation++; job?.cancel(true); renderingPreview = false; busy = false; status.text = "Preview stopped" }
         preview?.release(); preview = null; previewFile?.delete(); previewFile = null
     }
     override fun onPause() { stopPreview(); super.onPause() }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("exportFile", exporting?.name)
-        outState.putInt("preset", preset.selectedItemPosition)
+        outState.putString("presetName", selectedPreset.name)
+        outState.putBoolean("tuningOpen", tuning.visibility == android.view.View.VISIBLE)
+        outState.putBoolean("trimOpen", trimSection.visibility == android.view.View.VISIBLE)
         outState.putInt("pitch", pitch.progress)
         outState.putInt("formant", formant.progress)
         outState.putInt("speed", speed.progress)

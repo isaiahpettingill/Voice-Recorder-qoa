@@ -172,4 +172,63 @@ class SharedStorageWorkflowTest {
         assertNull(context.createRecordingDocument("bad\\name.qoa"))
         assertEquals(1, context.getAllRecordings().size)
     }
+    @Test fun editBottomTabOpensStoredRecordingWithoutOverflowMenu() = withFolder {
+        val uri = requireNotNull(context.createRecordingDocument("Navigation fixture.qoa"))
+        context.contentResolver.openOutputStream(uri, "w")!!.use { it.write(fixture()) }
+        val oldPage = context.config.lastUsedViewPagerPage
+        val oldAutoRecord = context.config.recordAfterLaunch
+        context.config.lastUsedViewPagerPage = 0
+        context.config.recordAfterLaunch = false
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Edit"))
+                    .perform(androidx.test.espresso.action.ViewActions.click())
+                val instrumentation = InstrumentationRegistry.getInstrumentation()
+                // Folder listing is asynchronous; wait for the synthetic fixture, not an arbitrary delay.
+                var found = false
+                for (attempt in 0 until 100) {
+                    try {
+                        androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Edit Navigation fixture.qoa"))
+                            .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+                        found = true; break
+                    } catch (_: androidx.test.espresso.NoMatchingViewException) { Thread.sleep(50) }
+                }
+                assertTrue("Edit tab lists recordings", found)
+                ScreenshotEvidence.capture("main-edit-tab")
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Edit Navigation fixture.qoa"))
+                    .perform(androidx.test.espresso.action.ViewActions.click())
+                instrumentation.waitForIdleSync()
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Save QOA copy"))
+                    .check(androidx.test.espresso.assertion.ViewAssertions.matches(androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+                androidx.test.espresso.Espresso.pressBack()
+            }
+        } finally {
+            context.config.lastUsedViewPagerPage = oldPage
+            context.config.recordAfterLaunch = oldAutoRecord
+        }
+    }
+
+    @Test fun recordingPresetSegmentsSaveSeparateDryAndProcessedCopies() = withFolder {
+        val source = java.io.File.createTempFile("automation-segments-", ".qoa", context.cacheDir)
+        val bytes = QoaCodec.encode(PcmAudio(ShortArray(32000) {
+            (4000 * kotlin.math.sin(2 * Math.PI * 220 * it / 16000)).toInt().toShort()
+        }, 16000, 1))
+        source.writeBytes(bytes)
+        val automation = org.fossify.voicerecorder.recorder.RecordingAutomation(source, 16000)
+        automation.timeline.accept(0, org.fossify.voicerecorder.audio.EditOptions())
+        automation.timeline.accept(16000, org.fossify.voicerecorder.audio.EditOptions(speed = 2.0))
+        automation.persist()
+        try {
+            val effected = requireNotNull(automation.render(context, tree.toString()))
+            val files = requireNotNull(context.recordingsDirectory()).listFiles()
+            assertEquals("Dry original and separate effects copy", 2, files.size)
+            val dry = files.single { it.uri != effected }
+            assertArrayEquals("Recovery publication retains original bytes", bytes,
+                context.contentResolver.openInputStream(dry.uri)!!.use { it.readBytes() })
+            val result = context.contentResolver.openInputStream(effected)!!.use { QoaCodec.read(it) }
+            assertTrue("First second unchanged; second second at double speed", kotlin.math.abs(result.frames - 24000) < 160)
+            assertFalse("Recovery source removed only after both outputs exist", source.exists())
+        } finally { automation.delete(); source.delete() }
+    }
+
 }

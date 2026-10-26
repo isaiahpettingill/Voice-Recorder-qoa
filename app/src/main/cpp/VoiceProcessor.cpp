@@ -5,6 +5,9 @@
 #include "vendor/klarinet/dsp/effects/LowPassFilter.h"
 #include "vendor/klarinet/dsp/effects/Chorus.h"
 #include "vendor/klarinet/dsp/effects/Delay.h"
+#include "vendor/klarinet/dsp/effects/Reverb.h"
+#include "vendor/klarinet/dsp/effects/Flanger.h"
+#include "vendor/klarinet/dsp/effects/Phaser.h"
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -27,7 +30,7 @@ std::vector<int16_t> process(const std::vector<int16_t>& samples, int rate, int 
         !std::isfinite(pitchSemitones) || std::abs(pitchSemitones) > 12 ||
         !std::isfinite(formantSemitones) || std::abs(formantSemitones) > 12 ||
         !std::isfinite(speed) || speed < .5 || speed > 2 ||
-        effect < 0 || effect > 3 || !std::isfinite(mix) || mix < 0 || mix > 1) {
+        effect < 0 || effect > 8 || !std::isfinite(mix) || mix < 0 || mix > 1) {
         throw std::invalid_argument("Invalid audio processing settings");
     }
     checkCancel(canceled);
@@ -96,7 +99,7 @@ std::vector<int16_t> process(const std::vector<int16_t>& samples, int rate, int 
             auto low = std::make_unique<klarinet::LowPassFilter>();
             low->setParameter(klarinet::LPFParams::kCutoffHz, std::min(3400.f, rate * .4f));
             chain.push_back(std::move(high)); chain.push_back(std::move(low));
-        } else {
+        } else if (effect == 3) {
             auto chorus = std::make_unique<klarinet::Chorus>();
             chorus->setParameter(klarinet::ChorusParams::kRateHz, .8f);
             chorus->setParameter(klarinet::ChorusParams::kDepth, .6f);
@@ -106,6 +109,38 @@ std::vector<int16_t> process(const std::vector<int16_t>& samples, int rate, int 
             delay->setParameter(klarinet::DelayParams::kFeedback, .2f);
             delay->setParameter(klarinet::DelayParams::kWetDryMix, .2f);
             chain.push_back(std::move(chorus)); chain.push_back(std::move(delay));
+        } else if (effect == 4) {
+            auto delay = std::make_unique<klarinet::Delay>();
+            delay->setParameter(klarinet::DelayParams::kTimeMs, 280.f);
+            delay->setParameter(klarinet::DelayParams::kFeedback, .35f);
+            delay->setParameter(klarinet::DelayParams::kWetDryMix, 1.f);
+            chain.push_back(std::move(delay));
+        } else if (effect == 5) {
+            auto reverb = std::make_unique<klarinet::Reverb>();
+            reverb->setParameter(klarinet::ReverbParams::kRoomSize, .85f);
+            reverb->setParameter(klarinet::ReverbParams::kDamping, .35f);
+            reverb->setParameter(klarinet::ReverbParams::kWetDryMix, 1.f);
+            chain.push_back(std::move(reverb));
+        } else if (effect == 6) {
+            auto chorus = std::make_unique<klarinet::Chorus>();
+            chorus->setParameter(klarinet::ChorusParams::kRateHz, .8f);
+            chorus->setParameter(klarinet::ChorusParams::kDepth, .6f);
+            chorus->setParameter(klarinet::ChorusParams::kWetDryMix, 1.f);
+            chain.push_back(std::move(chorus));
+        } else if (effect == 7) {
+            auto flanger = std::make_unique<klarinet::Flanger>();
+            flanger->setParameter(klarinet::FlangerParams::kRateHz, .4f);
+            flanger->setParameter(klarinet::FlangerParams::kDepth, .7f);
+            flanger->setParameter(klarinet::FlangerParams::kFeedback, .35f);
+            flanger->setParameter(klarinet::FlangerParams::kWetDryMix, 1.f);
+            chain.push_back(std::move(flanger));
+        } else if (effect == 8) {
+            auto phaser = std::make_unique<klarinet::Phaser>();
+            phaser->setParameter(klarinet::PhaserParams::kRateHz, .5f);
+            phaser->setParameter(klarinet::PhaserParams::kDepth, .7f);
+            phaser->setParameter(klarinet::PhaserParams::kStages, 4.f);
+            phaser->setParameter(klarinet::PhaserParams::kFeedback, .2f);
+            chain.push_back(std::move(phaser));
         }
         for (auto& fx : chain) fx->prepare(rate, channels);
         std::vector<float> block(BLOCK * channels);

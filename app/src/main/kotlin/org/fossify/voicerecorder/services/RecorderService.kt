@@ -162,6 +162,7 @@ class RecorderService : Service() {
         status = RECORDING_STOPPED
         val active = recorder ?: return
         recorder = null // One finalizer; onDestroy and repeated Stop cannot finalize twice.
+        val completedFolder = config.saveRecordingsFolder
         val completedPath = recordingPath
         val completedUri = resultUri
         val documentOutput = completedUri?.scheme == "content" && completedUri.authority != "${BuildConfig.APPLICATION_ID}.provider"
@@ -183,6 +184,10 @@ class RecorderService : Service() {
                 if (!cancel) failure?.let { showErrorToast(it) }
             } else {
                 scanRecording(completedPath, completedUri)
+                if (active is QoaRecorder) {
+                    try { active.renderPresetCopy(completedFolder)?.let { recordingSavedSuccessfully(it) } }
+                    catch (error: Exception) { showErrorToast(IllegalStateException("Original saved. Effects remain pending in recovery: ${error.message}", error)) }
+                }
             }
             EventBus.getDefault().post(Events.RecordingCompleted())
         }
