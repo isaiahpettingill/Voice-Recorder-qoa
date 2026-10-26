@@ -22,3 +22,7 @@ __pycache__/
 *.pyc
 
 /buildSrc/build/
+
+# Android native build outputs
+.cxx/
+.externalNativeBuild/
