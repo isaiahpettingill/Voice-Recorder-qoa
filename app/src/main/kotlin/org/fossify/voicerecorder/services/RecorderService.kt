@@ -66,6 +66,8 @@ class RecorderService : Service() {
     private var durationTimer = Timer()
     private var amplitudeTimer = Timer()
     private var recorder: Recorder? = null
+    private var pendingFinalizers = 0
+    private var destroyed = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,6 +79,7 @@ class RecorderService : Service() {
             STOP_AMPLITUDE_UPDATE -> amplitudeTimer.cancel()
             TOGGLE_PAUSE -> togglePause()
             CANCEL_RECORDING -> cancelRecording()
+            org.fossify.voicerecorder.helpers.SAVE_RECORDING -> stopRecording()
             else -> startRecording()
         }
 
@@ -85,6 +88,7 @@ class RecorderService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        destroyed = true
         stopRecording()
         isRunning = false
         updateWidgets(false)
@@ -106,14 +110,16 @@ class RecorderService : Service() {
 
         try {
             recorder = if (config.extension == EXTENSION_QOA) {
-                QoaRecorder(this)
+                QoaRecorder(this, name)
             } else if (recordMp3()) {
                 Mp3Recorder(this)
             } else {
                 MediaRecorderWrapper(this)
             }
 
-            if (usesDocuments) {
+            if (recorder is QoaRecorder) {
+                // QOA captures privately; choose its final name at Stop, including edits made while recording.
+            } else if (usesDocuments) {
                 val fileUri = checkNotNull(createRecordingDocument(name)) { "Could not create recording." }
                 resultUri = fileUri
                 contentResolver.openFileDescriptor(fileUri, "w")!!
@@ -153,23 +159,43 @@ class RecorderService : Service() {
 
     private fun cancelRecording() {
         finishRecording(cancel = true)
-        stopSelf()
     }
 
     private fun finishRecording(cancel: Boolean) {
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
-        val active = recorder ?: return
+        val active = recorder ?: run {
+            if (!destroyed && pendingFinalizers == 0) stopSelf()
+            return
+        }
+        pendingFinalizers++
+        isRunning = false
+        updateWidgets(false)
         recorder = null // One finalizer; onDestroy and repeated Stop cannot finalize twice.
+        if (!destroyed) runCatching { startForeground(RECORDER_RUNNING_NOTIF_ID, showNotification()) }
         val completedFolder = config.saveRecordingsFolder
-        val completedPath = recordingPath
-        val completedUri = resultUri
-        val documentOutput = completedUri?.scheme == "content" && completedUri.authority != "${BuildConfig.APPLICATION_ID}.provider"
-        if (cancel && active is QoaRecorder) active.discard()
+        var completedPath = recordingPath
+        var completedUri = resultUri
+        var documentOutput = completedUri?.scheme == "content" && completedUri.authority != "${BuildConfig.APPLICATION_ID}.provider"
+        if (active is QoaRecorder) {
+            active.freezeName()
+            if (cancel) active.discard()
+        }
         ensureBackgroundThread {
+            try {
             var failure: Exception? = null
-            try { active.stop() } catch (error: Exception) { failure = error }
+            try {
+                active.stop()
+                if (!cancel && active is QoaRecorder) {
+                    val name = active.finalName()
+                    val destination = checkNotNull(createRecordingDocument(name, completedFolder)) { "Could not create recording." }
+                    completedUri = destination
+                    completedPath = destination.path.orEmpty()
+                    documentOutput = destination.scheme == "content" && destination.authority != "${BuildConfig.APPLICATION_ID}.provider"
+                    contentResolver.openFileDescriptor(destination, "w")!!.use { active.setOutputFile(it) }
+                }
+            } catch (error: Exception) { failure = error }
             finally {
                 try { active.release() } catch (error: Exception) {
                     // Prefer the error containing recovery instructions.
@@ -178,8 +204,8 @@ class RecorderService : Service() {
             }
             if (cancel || failure != null) {
                 try {
-                    if (documentOutput && completedUri != null) DocumentsContract.deleteDocument(contentResolver, completedUri)
-                    else File(completedUri?.takeIf { it.scheme == "file" }?.path ?: completedPath).delete()
+                    if (documentOutput && completedUri != null) DocumentsContract.deleteDocument(contentResolver, checkNotNull(completedUri))
+                    else if (active !is QoaRecorder || completedUri != null) File(completedUri?.takeIf { it.scheme == "file" }?.path ?: completedPath).delete()
                 } catch (error: Exception) { showErrorToast(error) }
                 if (!cancel) failure?.let { showErrorToast(it) }
             } else {
@@ -189,7 +215,18 @@ class RecorderService : Service() {
                     catch (error: Exception) { showErrorToast(IllegalStateException("Original saved. Effects remain pending in recovery: ${error.message}", error)) }
                 }
             }
-            EventBus.getDefault().post(Events.RecordingCompleted())
+            } catch (error: Exception) {
+                runCatching { showErrorToast(error) }
+            } finally {
+            android.os.Handler(mainLooper).post {
+                pendingFinalizers--
+                if (!destroyed && recorder == null && pendingFinalizers == 0) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+                EventBus.getDefault().post(Events.RecordingCompleted())
+            }
+            }
         }
     }
 
@@ -281,7 +318,7 @@ class RecorderService : Service() {
         val icon = R.drawable.ic_graphic_eq_vector
         val title = label
         val visibility = NotificationCompat.VISIBILITY_PUBLIC
-        var text = getString(R.string.recording)
+        var text = if (status == RECORDING_STOPPED && pendingFinalizers > 0) "Saving and processing recording" else getString(R.string.recording)
         if (status == RECORDING_PAUSED) {
             text += " (${getString(R.string.paused)})"
         }

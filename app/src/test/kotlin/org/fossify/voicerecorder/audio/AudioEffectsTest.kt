@@ -13,20 +13,28 @@ class AudioEffectsTest {
         for(i in start+1 until end) if(audio.samples[(i-1)*audio.channels]<=0 && audio.samples[i*audio.channels]>0) crossings++
         return crossings.toDouble()*audio.sampleRate/(end-start)
     }
+    @Test fun noiseReductionDefaultsOnWithoutChangingVoiceOrSpeed() {
+        val defaults = EditOptions()
+        assertTrue(defaults.noiseReduction)
+        assertEquals(0.0, defaults.pitchSemitones, 0.0)
+        assertEquals(0.0, defaults.formantSemitones, 0.0)
+        assertEquals(1.0, defaults.speed, 0.0)
+        assertTrue(VoicePreset.entries.all { it.defaults().noiseReduction })
+    }
     @Test fun identityDoesNotMutateInput() {
-        val input=tone(); val before=input.samples.copyOf(); val output=AudioEffects.process(input,EditOptions())
+        val input=tone(); val before=input.samples.copyOf(); val output=AudioEffects.process(input,EditOptions(noiseReduction=false))
         assertArrayEquals(before,output.samples); assertNotSame(input.samples,output.samples)
         assertArrayEquals(before,input.samples)
     }
     @Test fun gainAndNormalizationAreSafe() {
         val input=tone()
-        val quieter=AudioEffects.process(input,EditOptions(gainDb=-6.0206))
+        val quieter=AudioEffects.process(input,EditOptions(noiseReduction=false,gainDb=-6.0206))
         assertTrue(abs(quieter.samples.maxOrNull()!!.toInt()-5000)<=2)
-        val normalized=AudioEffects.process(input,EditOptions(normalize=true))
+        val normalized=AudioEffects.process(input,EditOptions(noiseReduction=false,normalize=true))
         assertTrue(abs(normalized.samples.maxOrNull()!!.toInt()-29204)<=2)
         val silence=PcmAudio(ShortArray(16000),16000,1)
-        assertArrayEquals(silence.samples,AudioEffects.process(silence,EditOptions(normalize=true)).samples)
-        val loud=AudioEffects.process(input,EditOptions(gainDb=24.0))
+        assertArrayEquals(silence.samples,AudioEffects.process(silence,EditOptions(noiseReduction=false,normalize=true)).samples)
+        val loud=AudioEffects.process(input,EditOptions(noiseReduction=false,gainDb=24.0))
         assertEquals(32767,loud.samples.maxOrNull()!!.toInt()); assertEquals(-32768,loud.samples.minOrNull()!!.toInt())
     }
     @Test fun presetDefaultsAreTunableAndDistinct() {
@@ -40,9 +48,9 @@ class AudioEffectsTest {
     }
     @Test fun trimsUseFrameBoundariesAndRejectInvalidControls() {
         val input=tone(channels=2)
-        val out=AudioEffects.process(input,EditOptions(trimStartMs=100,trimEndMs=300))
+        val out=AudioEffects.process(input,EditOptions(noiseReduction=false,trimStartMs=100,trimEndMs=300))
         assertEquals(3200,out.frames)
-        for (options in listOf(EditOptions(speed=0.0),EditOptions(gainDb=Double.NaN),EditOptions(trimStartMs=2000),EditOptions(pitchSemitones=50.0),EditOptions(formantSemitones=Double.NaN),EditOptions(effectMix=2.0))) {
+        for (options in listOf(EditOptions(noiseReduction=false,speed=0.0),EditOptions(noiseReduction=false,gainDb=Double.NaN),EditOptions(noiseReduction=false,trimStartMs=2000),EditOptions(noiseReduction=false,pitchSemitones=50.0),EditOptions(noiseReduction=false,formantSemitones=Double.NaN),EditOptions(noiseReduction=false,effectMix=2.0))) {
             try { AudioEffects.process(input,options); fail("Invalid control accepted") } catch (_: IllegalArgumentException) { }
         }
     }

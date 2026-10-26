@@ -22,6 +22,7 @@ enum class VoicePreset(val title: String, val pitch: Double, val formants: Doubl
 }
 
 data class EditOptions(
+    val noiseReduction: Boolean = true,
     val gainDb: Double = 0.0,
     val normalize: Boolean = false,
     val pitchSemitones: Double = 0.0,
@@ -49,6 +50,7 @@ object AudioEffects {
         val expected = ((end - start) / options.speed).roundToInt().coerceAtLeast(1)
         require(expected.toLong() * audio.channels <= QoaCodec.MAX_SAMPLES) { "Edited audio exceeds the memory limit; trim it first" }
         var pcm = audio.samples.copyOfRange(start * audio.channels, end * audio.channels)
+        if (options.noiseReduction) pcm = NativeNoiseReducer.reduce(pcm, audio.sampleRate, audio.channels)
         if (options.pitchSemitones != 0.0 || options.formantSemitones != 0.0 || options.speed != 1.0 ||
             (options.preset.effect != 0 && options.effectMix > 0.0)) {
             pcm = NativeVoiceProcessor.process(pcm, audio.sampleRate, audio.channels,

@@ -1,4 +1,6 @@
 package org.fossify.voicerecorder.activities
+import org.fossify.voicerecorder.recorder.RecordingPresetSettings
+import androidx.appcompat.widget.SwitchCompat
 import org.fossify.voicerecorder.R
 
 import org.fossify.voicerecorder.views.applyEditorTheme
@@ -38,6 +40,7 @@ class EditSoundActivity : SimpleActivity() {
     private lateinit var formant: SeekBar
     private lateinit var effectMix: SeekBar
     private lateinit var speed: SeekBar
+    private lateinit var noiseReduction: SwitchCompat
     private lateinit var normalize: CheckBox
     private lateinit var preset: Spinner
     private lateinit var trimStart: EditText
@@ -77,6 +80,16 @@ class EditSoundActivity : SimpleActivity() {
         controls.addView(TextView(this).apply { text = intent.getStringExtra("title") ?: "Audio"; textSize = 18f })
         status = TextView(this).apply { text = "Opening audio…"; textSize = 14f; accessibilityLiveRegion = android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE }
         controls.addView(status)
+        noiseReduction = SwitchCompat(this).apply {
+            text = getString(R.string.noise_reduction); minHeight = dp(48)
+            isChecked = savedInstanceState?.getBoolean("noiseReduction") ?: RecordingPresetSettings.load(this@EditSoundActivity).noiseReduction
+            setOnCheckedChangeListener { _, enabled ->
+                stopPreview()
+                val options = RecordingPresetSettings.load(this@EditSoundActivity)
+                RecordingPresetSettings.save(this@EditSoundActivity, options.copy(noiseReduction = enabled))
+            }
+        }
+        controls.addView(noiseReduction)
         category = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         listOf("Voice", "Sound FX").forEachIndexed { index, title ->
             category.addView(RadioButton(this).apply { id = if (index == 0) R.id.editor_voice_category else R.id.editor_sound_fx_category; text = title; minHeight = dp(48) })
@@ -233,7 +246,7 @@ class EditSoundActivity : SimpleActivity() {
         val start = trimStart.text.toString().toDoubleOrNull() ?: error("Enter a valid start time.")
         val end = trimEnd.text.toString().takeIf { it.isNotBlank() }?.let { it.toDoubleOrNull() ?: error("Enter a valid end time.") }
         require(start >= 0 && start <= Int.MAX_VALUE / 1000.0 && (end == null || (end > start && end <= Int.MAX_VALUE / 1000.0))) { "End must be after start." }
-        return EditOptions(gainDb = (gain.progress - 24).toDouble(), normalize = normalize.isChecked,
+        return EditOptions(noiseReduction = noiseReduction.isChecked, gainDb = (gain.progress - 24).toDouble(), normalize = normalize.isChecked,
             pitchSemitones = (pitch.progress - 24) / 2.0, formantSemitones = (formant.progress - 24) / 2.0,
             effectMix = effectMix.progress / 100.0, speed = (speed.progress + 50) / 100.0,
             preset = selectedPreset, trimStartMs = (start * 1000).toInt(), trimEndMs = end?.let { (it * 1000).toInt() })
@@ -344,6 +357,7 @@ class EditSoundActivity : SimpleActivity() {
         outState.putInt("speed", speed.progress)
         outState.putInt("gain", gain.progress)
         outState.putInt("effectMix", effectMix.progress)
+        outState.putBoolean("noiseReduction", noiseReduction.isChecked)
         outState.putBoolean("normalize", normalize.isChecked)
         outState.putString("trimStart", trimStart.text.toString())
         outState.putString("trimEnd", trimEnd.text.toString())

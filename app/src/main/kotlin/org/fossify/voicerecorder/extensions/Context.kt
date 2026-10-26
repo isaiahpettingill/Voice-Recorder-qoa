@@ -61,7 +61,9 @@ fun Context.recordingsDirectory(folder: String = config.saveRecordingsFolder): D
     } else null
 }.getOrNull()
 
-fun Context.createRecordingDocument(name: String, folder: String = config.saveRecordingsFolder): Uri? = runCatching {
+private val recordingDocumentLock = Any()
+
+fun Context.createRecordingDocument(name: String, folder: String = config.saveRecordingsFolder): Uri? = synchronized(recordingDocumentLock) { runCatching {
     require(name.isNotBlank() && name != "." && name != ".." && '/' !in name && '\\' !in name)
     val directory = recordingsDirectory(folder) ?: return@runCatching null
     if (!directory.canWrite()) return@runCatching null
@@ -74,7 +76,7 @@ fun Context.createRecordingDocument(name: String, folder: String = config.saveRe
         candidate = "$stem (${suffix++})" + if (extension.isEmpty()) "" else ".$extension"
     }
     directory.createFile(if (name.endsWith(".qoa", true)) "audio/x-qoa" else name.getMimeType(), candidate)?.uri
-}.getOrNull()
+}.getOrNull() }
 
 fun Context.drawableToBitmap(drawable: Drawable): Bitmap {
     val size = (60 * resources.displayMetrics.density).toInt()

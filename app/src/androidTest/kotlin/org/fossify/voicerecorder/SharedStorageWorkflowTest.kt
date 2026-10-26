@@ -215,8 +215,8 @@ class SharedStorageWorkflowTest {
         }, 16000, 1))
         source.writeBytes(bytes)
         val automation = org.fossify.voicerecorder.recorder.RecordingAutomation(source, 16000)
-        automation.timeline.accept(0, org.fossify.voicerecorder.audio.EditOptions())
-        automation.timeline.accept(16000, org.fossify.voicerecorder.audio.EditOptions(speed = 2.0))
+        automation.timeline.accept(0, org.fossify.voicerecorder.audio.EditOptions(noiseReduction=false))
+        automation.timeline.accept(16000, org.fossify.voicerecorder.audio.EditOptions(noiseReduction=false, speed = 2.0))
         automation.persist()
         try {
             val effected = requireNotNull(automation.render(context, tree.toString()))

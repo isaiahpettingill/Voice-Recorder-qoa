@@ -73,3 +73,41 @@ preset ranges; Android tests exercise the actual packaged native library. Listen
 to your recording and tune the starting points instead of expecting a fixed
 male/female conversion. Native source revisions, licenses and build provenance
 are retained beside the vendored source.
+
+## Voice cleanup and recording names
+
+Noise reduction is **on by default**, including when upgrading from a version without
+this option. The Record and Edit switches remember an explicit Off choice; changing
+presets does not re-enable it. Turn it off for music, ambience, and sound effects you
+want to preserve. Cleanup uses the pinned official **SpeexDSP 1.2.1** spectral speech
+preprocessor (BSD-3-Clause), not a noise gate or our own denoising algorithm. Its
+license and source notices are included in the APK. No model download, internet
+permission, or uploaded recording is involved.
+
+Processing order is trim → noise reduction → Rubber Band pitch/formants/tempo →
+Klarinet creative effects → gain/normalization. Cleanup itself changes neither
+pitch nor speed. It reduces background noise; it cannot remove every sound or
+recover speech already obscured by noise. Supports 8–192 kHz mono/stereo. Other
+sample rates fail explicitly; switch cleanup off for such imported files.
+
+While recording, changes are saved at accepted audio-frame boundaries and applied
+**after Stop**, not to live headphone monitoring. The dry QOA original remains
+untouched, and the processed result is a separate `-effects.qoa` copy. Cleanup-only
+recordings stream through bounded buffers without the editor's duration cap. If
+pitch/tempo/creative effects exceed the existing editing limit, the original and
+settings journal remain recoverable; cleanup is never silently skipped.
+
+The Record page name field can be edited before or during QOA recording, including
+while paused. Blank uses an automatic name. Names are single sanitized basenames,
+`.qoa` is preserved, collisions receive a numeric suffix, and recovery retains the
+chosen name. Other recording formats do not offer this QOA-specific field.
+
+Verification includes deterministic synthetic voiced/noise, silence, stereo,
+multiple sample-rate and partial-tail fixtures, native/JNI cancellation, streamed
+recordings past the editing limit, and switch/settings recovery. Synthetic energy
+measurements are regression checks, not human listening or speech-quality scores.
+
+Normal Save keeps the existing foreground service and its notification alive until
+publication/processing completes (the microphone is stopped first). OS force-stop
+or process death can still interrupt work; reopen Record and use the pending-effects
+retry control. The durable dry source and journal are retained until success.

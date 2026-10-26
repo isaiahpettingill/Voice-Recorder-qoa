@@ -10,6 +10,11 @@ import java.io.File
 import java.io.RandomAccessFile
 
 class PresetTimelineTest {
+    @Test fun defaultNoiseReductionCountsAsAnEffect() {
+        val timeline = PresetTimeline()
+        timeline.accept(0, EditOptions())
+        assertTrue(timeline.hasEffects)
+    }
     @Test fun unchangedChunksDoNotResetLibraryEffectState() {
         val timeline=PresetTimeline()
         assertTrue(timeline.accept(0,VoicePreset.CHIPMUNK.defaults()))
@@ -26,7 +31,7 @@ class PresetTimelineTest {
         assertEquals(VoicePreset.CHIPMUNK,timeline.segments.last().options.preset)
     }
     @Test fun cleanOnlyDoesNotNeedAnEffectsCopy() {
-        val timeline=PresetTimeline(); timeline.accept(0,EditOptions())
+        val timeline=PresetTimeline(); timeline.accept(0,EditOptions(noiseReduction=false))
         assertFalse(timeline.hasEffects)
         timeline.accept(100,EditOptions(gainDb=2.0)); assertTrue(timeline.hasEffects)
     }
@@ -34,7 +39,7 @@ class PresetTimelineTest {
         val timeline=PresetTimeline();timeline.accept(20,EditOptions());timeline.accept(10,VoicePreset.DEEP.defaults())
     }
     @Test fun switchingBackToCleanRetainsPriorEffectSegment() {
-        val timeline=PresetTimeline();timeline.accept(0,VoicePreset.DEEP.defaults());timeline.accept(6000,EditOptions())
+        val timeline=PresetTimeline();timeline.accept(0,VoicePreset.DEEP.defaults());timeline.accept(6000,EditOptions(noiseReduction=false))
         assertTrue(timeline.hasEffects); assertEquals(2,timeline.segments.size)
     }
     @Test fun processDeathRecoversCompleteFramesWithoutChangingOriginal() {

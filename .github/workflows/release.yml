@@ -53,7 +53,9 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358 cmake;3.22.1
       - uses: gradle/actions/setup-gradle@v4
       - name: Test native voice libraries
-        run: scripts/test_native_voice.sh
+        run: |
+          scripts/test_native_voice.sh
+          scripts/test_native_noise.sh
       - name: Verify release tooling
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Test, lint and assemble without release credentials

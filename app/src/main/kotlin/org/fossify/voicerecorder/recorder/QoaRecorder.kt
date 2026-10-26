@@ -14,13 +14,21 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 
 /** Captures bounded PCM chunks. Only encoded QOA is retained on disk. */
-class QoaRecorder(private val context: Context) : Recorder {
+class QoaRecorder(private val context: Context, private val automaticName: String = "Recording-${System.currentTimeMillis()}") : Recorder {
     private var path: String? = null
     private var descriptor: ParcelFileDescriptor? = null
     private var source: AudioRecord? = null
     private var worker: Thread? = null
     private var temporary: File? = null
     private var automation: RecordingAutomation? = null
+    @Volatile private var frozenName: String? = null
+    private val settings = context.getSharedPreferences("recording-presets", Context.MODE_PRIVATE)
+    private val nameListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "recordingName") {
+            try { automation?.persistName(RecordingPresetSettings.recordingName(context)) }
+            catch (error: Exception) { failure = error }
+        }
+    }
     private var capturedFrames = 0L
     private var discard = false
     private var finalized = false
@@ -43,7 +51,8 @@ class QoaRecorder(private val context: Context) : Recorder {
         }
         val recovery = File(context.filesDir, "recording-recovery").apply { mkdirs() }
         temporary = File.createTempFile("recording-", ".qoa", recovery)
-        automation = RecordingAutomation(checkNotNull(temporary), rate)
+        automation = RecordingAutomation(checkNotNull(temporary), rate, automaticName).also { it.updateName(RecordingPresetSettings.recordingName(context)); it.persist() }
+        settings.registerOnSharedPreferenceChangeListener(nameListener)
     }
     override fun start() {
         val input = checkNotNull(source)
@@ -63,7 +72,7 @@ class QoaRecorder(private val context: Context) : Recorder {
                             for (index in 0 until count) peak = maxOf(peak, abs(buffer[index].toInt()))
                             amplitude.set(peak)
                             val journal = checkNotNull(automation)
-                            if (journal.timeline.accept(capturedFrames, RecordingPresetSettings.load(context))) journal.persist()
+                            journal.captureSettings(capturedFrames, RecordingPresetSettings.load(context), frozenName ?: RecordingPresetSettings.recordingName(context))
                             writer.append(buffer, count)
                             capturedFrames += count
                         }
@@ -80,6 +89,7 @@ class QoaRecorder(private val context: Context) : Recorder {
     override fun pause() { paused = true; amplitude.set(0) }
     override fun resume() { paused = false }
     override fun stop() {
+        settings.unregisterOnSharedPreferenceChangeListener(nameListener)
         stopped = true
         try {
             source?.let { if (it.recordingState == AudioRecord.RECORDSTATE_RECORDING) it.stop() }
@@ -92,8 +102,14 @@ class QoaRecorder(private val context: Context) : Recorder {
             worker?.join(5000)
         }
         check(worker?.isAlive != true) { "Microphone did not stop. Recovery file: ${temporary?.absolutePath}" }
+        automation?.persistName(frozenName ?: RecordingPresetSettings.recordingName(context))
         failure?.let { throw it }
     }
+    fun freezeName() {
+        frozenName = RecordingPresetSettings.recordingName(context)
+        settings.unregisterOnSharedPreferenceChangeListener(nameListener)
+    }
+    fun finalName(): String = checkNotNull(automation).recordingName
     fun discard() { discard = true }
     override fun release() {
         var saved = false
