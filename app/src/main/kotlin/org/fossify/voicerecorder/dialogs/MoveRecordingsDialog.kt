@@ -5,6 +5,7 @@ import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.extensions.getAlertDialogBuilder
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.setupDialogStuff
+import org.fossify.commons.extensions.toast
 import org.fossify.commons.helpers.MEDIUM_ALPHA
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.voicerecorder.R
@@ -35,7 +36,6 @@ class MoveRecordingsDialog(
                     titleId = R.string.move_recordings
                 ) {
                     dialog = it
-                    dialog.setOnDismissListener { callback() }
                     dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
                         callback()
                         dialog.dismiss()
@@ -68,9 +68,13 @@ class MoveRecordingsDialog(
                 recordingsToMove = activity.getAllRecordings(),
                 sourceParent = previousFolder,
                 destinationParent = newFolder
-            ) {
+            ) { success ->
                 activity.runOnUiThread {
-                    callback()
+                    if (success) {
+                        callback()
+                    } else {
+                        activity.toast("Some recordings could not be moved. The original folder remains selected. Successfully moved files are in the new folder; failed files remain in the original folder.")
+                    }
                     dialog.dismiss()
                 }
             }

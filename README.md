@@ -100,3 +100,11 @@ Capture moments, preserve memories, and unleash your creativity with Fossify Voi
 <img alt="App image" src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_en-US.png" width="30%">
 <img alt="App image" src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_en-US.png" width="30%">
 </div>
+
+### Shared folders (Android and GrapheneOS)
+
+Choose **Settings → Save recordings in** to open Android's system folder picker. Select or create a normal shared folder such as `Music/Recordings`; confirm **Use this folder**. The app retains access to that selected folder across restarts. It does not need all-files access, a Storage Scopes exception, or Internet access. Android intentionally prevents selecting storage roots, the Downloads root, and `Android/data` or `Android/obb`; choose a subfolder instead.
+
+QOA files are listed by filename even if a provider does not recognize their MIME type. Existing folders/recordings are not deleted when selecting a new folder. If offered, moving existing recordings copies successfully before removing each source; failed moves keep their source. Cancel keeps the old selection. Revoked/deleted folder access is requested again before the next recording or edited-copy save.
+
+Storage behavior follows [Android SAF documentation](https://developer.android.com/training/data-storage/shared/documents-files) and [GrapheneOS storage access](https://grapheneos.org/usage#storage-access). Emulator tests do not replace physical GrapheneOS testing.
